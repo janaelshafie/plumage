@@ -16,14 +16,14 @@ Five people, five steps, run in order. Each person finishes their step, commits 
 
 | # | Owner | Step | Planned | Status | Finished on |
 |---|-------|------|---------|--------|-------------|
-| 1 | Jana | Foundation and data pipeline | Mon 26 Oct | 🔵 In progress | |
-| 2 | Habiba | EDA, cleaning, preprocessing, augmentation | Tue 27 Oct | ⚪ Waiting | |
+| 1 | Jana | Foundation and data pipeline | Mon 26 Oct | ✅ Done | Mon 26 Oct |
+| 2 | Habiba | EDA, cleaning, preprocessing, augmentation | Tue 27 Oct | 🔵 In progress | |
 | 3 | Nouran | From-scratch CNN, trainer, metrics | Wed 28 Oct | ⚪ Waiting | |
 | 4 | Mohamed | Transfer learning and hyperparameter tuning | Thu 29 – Fri 30 Oct (2 pm) | ⚪ Waiting | |
 | 5 | Abdallah | Grad-CAM, inference, benchmarking, submission | Fri 30 – Sat 31 Oct | ⚪ Waiting | |
 | – | Everyone | Final review and LMS submission | Sun 1 Nov | ⚪ Waiting | |
 
-**Baton is currently with:** Jana
+**Baton is currently with:** Habiba
 
 ---
 
@@ -45,17 +45,17 @@ Five people, five steps, run in order. Each person finishes their step, commits 
 **Goal:** Build the skeleton everyone else builds on: repo, project layout, configs, dataset over the Hugging Face splits, a fixed validation split, the tracker wrapper, and the CLI entry point.
 
 ### Checklist
-- [ ] Create the GitHub repo and add Habiba, Nouran, Mohamed and Abdallah as collaborators. Add a `.gitignore` for `data/`, `outputs/`, `mlruns/`, `*.pt`, `*.pth`, `.ipynb_checkpoints`.
-- [ ] Create the folder layout from section 5.2 of the brief: `configs/`, `notebooks/`, `docs/`, `src/{data,models,training,evaluation,visualization,utils}/` with `__init__.py`, `outputs/`.
-- [ ] Write `requirements.txt`: torch, torchvision, datasets, mlflow, matplotlib, seaborn, scikit-learn, pandas, pyyaml, tqdm, pillow, imagehash.
-- [ ] Config and reproducibility helpers in `src/utils/`: `load_config(path)`, `set_seed(seed)` (python/numpy/torch), `get_device()`.
-- [ ] `CUBDataset` in `src/data/cub_dataset.py`: loads `Multimodal-Fatima/CUB_train` and `CUB_test`, converts every image to RGB, returns `(image_tensor, label)`, takes a `transform` argument so Habiba can plug in augmentation.
-- [ ] Stratified validation split: hold out ~10% of the train set per class with a fixed seed. Save indices to `configs/splits/val_indices.json` and commit it. **The test set is never used for tuning.**
-- [ ] `build_dataloaders(cfg, train_tf, eval_tf)` returning train / val / test loaders.
-- [ ] Experiment tracker wrapper in `src/utils/tracking.py` (local MLflow) so the backend can be swapped in one file.
-- [ ] CLI skeleton in `src/cli.py` with subcommands `train`, `predict`, `eda`, `tune`, each taking `--task` and `--config` (can print "not implemented yet" for now).
-- [ ] README: environment setup section.
-- [ ] Update the progress tracker and hand off to Habiba.
+- [x] Create the GitHub repo and add Habiba, Nouran, Mohamed and Abdallah as collaborators. Add a `.gitignore` for `data/`, `outputs/`, `mlruns/`, `*.pt`, `*.pth`, `.ipynb_checkpoints`.
+- [x] Create the folder layout from section 5.2 of the brief: `configs/`, `notebooks/`, `docs/`, `src/{data,models,training,evaluation,visualization,utils}/` with `__init__.py`, `outputs/`.
+- [x] Write `requirements.txt`: torch, torchvision, datasets, mlflow, matplotlib, seaborn, scikit-learn, pandas, pyyaml, tqdm, pillow, imagehash.
+- [x] Config and reproducibility helpers in `src/utils/`: `load_config(path)`, `set_seed(seed)` (python/numpy/torch), `get_device()`.
+- [x] `CUBDataset` in `src/data/cub_dataset.py`: loads `Multimodal-Fatima/CUB_train` and `CUB_test`, converts every image to RGB, returns `(image_tensor, label)`, takes a `transform` argument so Habiba can plug in augmentation.
+- [x] Stratified validation split: hold out ~10% of the train set per class with a fixed seed. Save indices to `configs/splits/val_indices.json` and commit it. **The test set is never used for tuning.**
+- [x] `build_dataloaders(cfg, train_tf, eval_tf)` returning train / val / test loaders.
+- [x] Experiment tracker wrapper in `src/utils/tracking.py` (local MLflow) so the backend can be swapped in one file.
+- [x] CLI skeleton in `src/cli.py` with subcommands `train`, `predict`, `eda`, `tune`, each taking `--task` and `--config` (can print "not implemented yet" for now).
+- [x] README: environment setup section.
+- [x] Update the progress tracker and hand off to Habiba.
 
 ### Files
 `src/utils/config.py`, `src/utils/tracking.py`, `src/data/cub_dataset.py`, `src/data/dataloaders.py`, `configs/base.yaml`, `configs/splits/val_indices.json`, `src/cli.py`, `requirements.txt`, `README.md`
@@ -245,8 +245,15 @@ docs: README run commands
 > Add one entry when you finish. Keep it short: what's done, where things are, what the next person must know.
 
 ### Jana → Habiba
-- Date:
+- Date: Mon 26 Oct 2026
 - Notes:
+  - Setup and checks are in the README: `pip install -r requirements.txt`, then `python -m pytest` and `python scripts/smoke_test.py`. The first run downloads ~1.2 GB into `data/hf_cache/`.
+  - Splits: train 5,394 / val 600 (3 per class, seed 42, `configs/splits/val_indices.json`, don't regenerate) / test 5,794.
+  - `CUBDataset(split, transform, indices)` returns `(tensor, label)`. For EDA without decoding images use `ds.labels`, `ds.get_description(i)`, `ds.get_file_name(i)`, or the raw HF dataset via `ds.hf`.
+  - `build_dataloaders(cfg, train_tf, eval_tf)` takes your transforms; until `src/data/transforms.py` exists it falls back to a resize + center-crop placeholder (`default_transform` in `src/data/dataloaders.py`).
+  - Put the CUB mean/std next to the ImageNet ones under `data:` in `configs/base.yaml`.
+  - The `eda` CLI stub is `cmd_eda` in `src/cli.py`; replace its body.
+  - Tracking is local MLflow only (`mlflow.db`, gitignored); there is no shared tracker.
 
 ### Habiba → Nouran
 - Date:
