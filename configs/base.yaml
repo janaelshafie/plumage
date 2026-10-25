@@ -19,11 +19,7 @@ data:
   std: [0.229, 0.224, 0.225]
 
 tracking:
-  backend: mlflow            # mlflow | wandb | none
+  backend: mlflow            # mlflow (local mlflow.db) | none
   experiment: plumage-milestone1
-  # Leave null to use MLFLOW_TRACKING_URI from the environment (the shared DagsHub server),
-  # falling back to a local ./mlruns folder.
-  tracking_uri: null
-  wandb_entity: null         # only used when backend: wandb
 
 output_dir: outputs

@@ -31,23 +31,13 @@ python scripts/smoke_test.py --config configs/base.yaml
 ```
 
 The smoke test downloads the dataset on its first run (~1.2 GB into `data/hf_cache/`), pulls one batch from each
-of train/val/test, checks shapes `[B, 3, 224, 224]` and labels in 0–199, and logs a run to the tracker.
+of train/val/test, checks shapes `[B, 3, 224, 224]` and labels in 0–199, and logs a run to the local MLflow tracker.
 
 ### Experiment tracker
 
-Every run is logged through [src/utils/tracking.py](src/utils/tracking.py), so the backend can be swapped in that one file
-(`tracking.backend` in the config: `mlflow`, `wandb` or `none`).
-
-The shared tracker is MLflow hosted on DagsHub. Set your credentials as environment variables before running and **never commit them**:
-
-```bash
-export MLFLOW_TRACKING_URI=https://dagshub.com/<owner>/plumage.mlflow
-export MLFLOW_TRACKING_USERNAME=<your-dagshub-username>
-export MLFLOW_TRACKING_PASSWORD=<your-dagshub-token>
-```
-
-On Colab/Kaggle, store them as notebook secrets and set `os.environ[...]` in the first cell.
-Without these variables, runs go to a local `mlflow.db` file (browse with `mlflow ui --backend-store-uri sqlite:///mlflow.db`).
+Every run is logged locally with MLflow through [src/utils/tracking.py](src/utils/tracking.py) to a `mlflow.db` file
+(gitignored). Browse runs with `mlflow ui --backend-store-uri sqlite:///mlflow.db`. Set `tracking.backend: none` in a
+config to turn logging off.
 
 ## Data
 

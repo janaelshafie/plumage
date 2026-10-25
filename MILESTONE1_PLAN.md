@@ -33,7 +33,7 @@ Five people, five steps, run in order. Each person finishes their step, commits 
 - **Commit from your own account,** small and often. Several meaningful commits per person, never one big upload at the end.
 - **Open a PR; the previous person reviews it.** Reviewing is how everyone learns the whole project for the individual discussion (35% of the grade).
 - **No final logic in notebooks.** Explore in `notebooks/`, but anything kept moves into `src/` and runs through the CLI.
-- **Log every run** to the shared experiment tracker. Never commit checkpoints or data; checkpoints go to the team Google Drive folder.
+- **Log every run** through the tracker wrapper (local MLflow). Never commit checkpoints or data; checkpoints go to the team Google Drive folder.
 - **Write report notes** in `docs/report_notes.md` under your step: what you did, why, and what failed.
 - **Use the "Before your turn" time.** Don't commit early, but prepare so your step goes fast.
 
@@ -42,17 +42,17 @@ Five people, five steps, run in order. Each person finishes their step, commits 
 ## Step 1 — Jana: Foundation and data pipeline
 
 **When:** Mon 26 Oct
-**Goal:** Build the skeleton everyone else builds on: repo, project layout, configs, dataset over the Hugging Face splits, a fixed validation split, the shared tracker, and the CLI entry point.
+**Goal:** Build the skeleton everyone else builds on: repo, project layout, configs, dataset over the Hugging Face splits, a fixed validation split, the tracker wrapper, and the CLI entry point.
 
 ### Checklist
 - [ ] Create the GitHub repo and add Habiba, Nouran, Mohamed and Abdallah as collaborators. Add a `.gitignore` for `data/`, `outputs/`, `mlruns/`, `*.pt`, `*.pth`, `.ipynb_checkpoints`.
 - [ ] Create the folder layout from section 5.2 of the brief: `configs/`, `notebooks/`, `docs/`, `src/{data,models,training,evaluation,visualization,utils}/` with `__init__.py`, `outputs/`.
-- [ ] Write `requirements.txt`: torch, torchvision, datasets, mlflow (or wandb), matplotlib, seaborn, scikit-learn, pandas, pyyaml, tqdm, pillow, imagehash.
+- [ ] Write `requirements.txt`: torch, torchvision, datasets, mlflow, matplotlib, seaborn, scikit-learn, pandas, pyyaml, tqdm, pillow, imagehash.
 - [ ] Config and reproducibility helpers in `src/utils/`: `load_config(path)`, `set_seed(seed)` (python/numpy/torch), `get_device()`.
 - [ ] `CUBDataset` in `src/data/cub_dataset.py`: loads `Multimodal-Fatima/CUB_train` and `CUB_test`, converts every image to RGB, returns `(image_tensor, label)`, takes a `transform` argument so Habiba can plug in augmentation.
 - [ ] Stratified validation split: hold out ~10% of the train set per class with a fixed seed. Save indices to `configs/splits/val_indices.json` and commit it. **The test set is never used for tuning.**
 - [ ] `build_dataloaders(cfg, train_tf, eval_tf)` returning train / val / test loaders.
-- [ ] Shared experiment tracker everyone logs to (W&B team project or DagsHub-hosted MLflow), behind a small wrapper in `src/utils/tracking.py` so the backend can be swapped in one file.
+- [ ] Experiment tracker wrapper in `src/utils/tracking.py` (local MLflow) so the backend can be swapped in one file.
 - [ ] CLI skeleton in `src/cli.py` with subcommands `train`, `predict`, `eda`, `tune`, each taking `--task` and `--config` (can print "not implemented yet" for now).
 - [ ] README: environment setup section.
 - [ ] Update the progress tracker and hand off to Habiba.
@@ -73,7 +73,7 @@ feat(cli): train/predict/eda/tune skeleton
 ### Ready to hand off when
 - `python -m src.cli --help` runs
 - A smoke test pulls one batch with shape `[B, 3, H, W]` and labels in 0–199
-- A test run appears in the shared tracker
+- A test run appears in the local MLflow tracker
 
 ---
 
