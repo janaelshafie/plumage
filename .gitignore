@@ -3,6 +3,7 @@
 /outputs/*
 !/outputs/.gitkeep
 mlruns/
+mlflow.db
 mlartifacts/
 wandb/
 *.pt
