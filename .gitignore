@@ -1,0 +1,28 @@
+# Data, outputs and experiment logs (never committed)
+/data/
+/outputs/*
+!/outputs/.gitkeep
+mlruns/
+mlartifacts/
+wandb/
+*.pt
+*.pth
+*.ckpt
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Secrets and editors
+.env
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
