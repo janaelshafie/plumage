@@ -6,22 +6,11 @@ from typing import Callable
 
 import torch
 from torch.utils.data import DataLoader
-from torchvision import transforms as T
 
 from src.data.cub_dataset import CUBDataset, load_hf_split
 from src.data.splits import get_train_val_indices
+from src.data.transforms import get_eval_transforms, get_train_transforms
 from src.utils.config import seed_worker
-
-
-def default_transform(cfg: dict) -> Callable:
-    """Resize + center crop + normalize. Placeholder until ``src/data/transforms.py`` (Step 2)."""
-    size = cfg["data"]["image_size"]
-    return T.Compose([
-        T.Resize(int(size * 256 / 224)),
-        T.CenterCrop(size),
-        T.ToTensor(),
-        T.Normalize(cfg["data"]["mean"], cfg["data"]["std"]),
-    ])
 
 
 def build_datasets(
@@ -29,9 +18,10 @@ def build_datasets(
     train_tf: Callable | None = None,
     eval_tf: Callable | None = None,
 ) -> tuple[CUBDataset, CUBDataset, CUBDataset]:
+    """Transforms default to ``get_train_transforms`` / ``get_eval_transforms`` from the config."""
     data_cfg = cfg["data"]
-    train_tf = train_tf or default_transform(cfg)
-    eval_tf = eval_tf or default_transform(cfg)
+    train_tf = train_tf or get_train_transforms(cfg)
+    eval_tf = eval_tf or get_eval_transforms(cfg)
 
     hf_train = load_hf_split("train", data_cfg["train_dataset"], data_cfg.get("cache_dir"))
     hf_test = load_hf_split("test", data_cfg["test_dataset"], data_cfg.get("cache_dir"))
