@@ -16,6 +16,8 @@ import unicodedata
 _CHAR_MAP = str.maketrans({
     "‘": "'", "’": "'", "“": '"', "”": '"',
     "–": "-", "—": "-", " ": " ",
+    "�": " ",  # ~100 train captions have every space mis-encoded as U+FFFD U+FFFD
+    "&": " and ", "/": " ",
 })
 _ALLOWED = re.compile(r"[^a-z0-9 ,.'\-]")      # everything else becomes a space
 _REPEATED_PUNCT = re.compile(r"([,.'\-])\1+")   # "..", ",," -> single
