@@ -23,7 +23,35 @@ def _not_implemented(name: str, args: argparse.Namespace) -> int:
 
 
 def cmd_eda(args: argparse.Namespace, cfg: dict) -> int:
-    return _not_implemented("eda", args)
+    """Dataset-level, so ``--task`` is ignored. Figures go to ``outputs/figures/eda/``."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from src.utils.tracking import get_tracker
+    from src.visualization.eda_plots import run_eda
+
+    summary, figures = run_eda(cfg)
+    channel = summary["channel_stats_train"]
+    print(f"Wrote {len(figures)} figures and summary.json to {figures[0].parent}")
+    print(f"CUB train mean {channel['mean']}  std {channel['std']}  (put these in data.cub_mean / cub_std)")
+
+    tracker = get_tracker(cfg)
+    with tracker.run("eda", tags={"step": "2", "owner": "habiba", "kind": "eda"}, config=cfg):
+        balance, dups, caps = summary["class_balance"], summary["duplicates"], summary["captions"]
+        tracker.log_metrics({
+            "train/imbalance_ratio": balance["train"]["imbalance_ratio"],
+            "test/imbalance_ratio": balance["test"]["imbalance_ratio"],
+            "images/failed_to_decode": len(summary["images"]["failed_to_decode"]),
+            "images/non_rgb": len(summary["images"]["non_rgb_files"]),
+            "dups/train_train_pairs": dups["train_train_pairs"],
+            "dups/train_test_pairs": dups["train_test_pairs"],
+            "captions/vocab_clean": caps["vocab_clean"],
+            "captions/words_mean": caps["caption_words_mean"],
+        })
+        for path in [*figures, figures[0].parent / "summary.json"]:
+            tracker.log_artifact(str(path))
+        print(f"Logged tracker run: {tracker.run_url}")
+    return 0
 
 
 def cmd_train(args: argparse.Namespace, cfg: dict) -> int:
