@@ -18,6 +18,8 @@ def test_split_description_drops_blank_lines():
     ("It has a short,  pointy beak!", "it has a short, pointy beak"),
     ("small bird,with a “yellow” belly..", "small bird, with a yellow belly"),
     ("the bird’s wings are grey", "the bird's wings are grey"),
+    ("this��bird��has��a black body�", "this bird has a black body"),
+    ("black & white wings, red/orange beak", "black and white wings, red orange beak"),
     ("  ...  ", ""),
 ])
 def test_clean_caption(raw, clean):
