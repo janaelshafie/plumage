@@ -27,6 +27,10 @@ def build_datasets(
     hf_test = load_hf_split("test", data_cfg["test_dataset"], data_cfg.get("cache_dir"))
 
     train_idx, val_idx = get_train_val_indices(cfg, hf_train["label"])
+    exclude = set(data_cfg.get("exclude_train_files") or [])
+    if exclude:
+        file_names = hf_train["file_name"]
+        train_idx = [i for i in train_idx if file_names[i] not in exclude]
     train_ds = CUBDataset("train", train_tf, indices=train_idx, hf_dataset=hf_train)
     val_ds = CUBDataset("train", eval_tf, indices=val_idx, hf_dataset=hf_train)
     test_ds = CUBDataset("test", eval_tf, hf_dataset=hf_test)
