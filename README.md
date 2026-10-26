@@ -43,7 +43,7 @@ config to turn logging off.
 
 | Split | Source | Images | Use |
 |-------|--------|--------|-----|
-| train | `Multimodal-Fatima/CUB_train` minus val | 5,394 | training |
+| train | `Multimodal-Fatima/CUB_train` minus val and 5 duplicates | 5,389 | training |
 | val   | stratified 10% per class of `CUB_train` | 600 | model selection and tuning |
 | test  | `Multimodal-Fatima/CUB_test` | 5,794 | final evaluation only, never tuning |
 
@@ -58,7 +58,15 @@ cfg = load_config("configs/base.yaml")
 train_loader, val_loader, test_loader = build_dataloaders(cfg, train_tf, eval_tf)
 ```
 
-`train_tf` and `eval_tf` are any callables mapping an RGB PIL image to a tensor. If omitted, a resize + center-crop placeholder is used.
+`train_tf` and `eval_tf` are any callables mapping an RGB PIL image to a tensor. If omitted, `get_train_transforms(cfg)` and
+`get_eval_transforms(cfg)` from [src/data/transforms.py](src/data/transforms.py) are used (augmentation settings under `data.augment`).
+
+- **Normalization:** `data.normalization: imagenet` (default, for pretrained backbones) or `cub` (CUB train stats, for from-scratch models).
+- **Duplicates:** `data.exclude_train_files` lists 5 train images that duplicate a test image or another train image. They are dropped from
+  training only; val and test are unchanged.
+- **Captions:** `clean_captions(description)` in [src/data/text.py](src/data/text.py) splits and cleans the 10 captions of an image.
+
+`python -m src.cli eda --config configs/base.yaml` regenerates every EDA figure, `summary.json` and CSV in `outputs/figures/eda/` (about 3 minutes).
 
 ## Project layout
 

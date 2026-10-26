@@ -17,13 +17,13 @@ Five people, five steps, run in order. Each person finishes their step, commits 
 | # | Owner | Step | Planned | Status | Finished on |
 |---|-------|------|---------|--------|-------------|
 | 1 | Jana | Foundation and data pipeline | Mon 26 Oct | ✅ Done | Mon 26 Oct |
-| 2 | Habiba | EDA, cleaning, preprocessing, augmentation | Tue 27 Oct | 🔵 In progress | |
-| 3 | Nouran | From-scratch CNN, trainer, metrics | Wed 28 Oct | ⚪ Waiting | |
+| 2 | Habiba | EDA, cleaning, preprocessing, augmentation | Tue 27 Oct | ✅ Done | Mon 26 Oct |
+| 3 | Nouran | From-scratch CNN, trainer, metrics | Wed 28 Oct | 🔵 In progress | |
 | 4 | Mohamed | Transfer learning and hyperparameter tuning | Thu 29 – Fri 30 Oct (2 pm) | ⚪ Waiting | |
 | 5 | Abdallah | Grad-CAM, inference, benchmarking, submission | Fri 30 – Sat 31 Oct | ⚪ Waiting | |
 | – | Everyone | Final review and LMS submission | Sun 1 Nov | ⚪ Waiting | |
 
-**Baton is currently with:** Habiba
+**Baton is currently with:** Nouran
 
 ---
 
@@ -84,21 +84,21 @@ feat(cli): train/predict/eda/tune skeleton
 **Goal:** Understand the data and turn findings into code: image and caption plots, caption cleaning, normalization statistics, and a justified augmentation strategy.
 
 ### Checklist
-- [ ] Class distribution plot for train / val / test, plus imbalance ratio (max/min).
-- [ ] Image statistics: width, height, aspect ratio, image modes (look for grayscale or RGBA images), file sizes.
-- [ ] Duplicate and corruption check: perceptual hashes (`imagehash`) within train and across train/test; list anything that fails to decode.
-- [ ] Channel mean and std on the train split; compare with ImageNet stats, write both into `configs/base.yaml`, note which is used for which model.
-- [ ] Sample grid of images with species names.
-- [ ] Caption analysis: split `description` on `\n`, check each image has 10 captions, plot caption length in words, vocabulary size, top words, rare words (freq < 5) as typo candidates, odd characters.
-- [ ] Caption cleaning in `src/data/text.py`: `split_description()` and `clean_caption()` (strip, lowercase, normalize punctuation/whitespace, drop empty lines). Milestone 2 captioning reuses this.
-- [ ] Augmentation in `src/data/transforms.py`:
+- [x] Class distribution plot for train / val / test, plus imbalance ratio (max/min).
+- [x] Image statistics: width, height, aspect ratio, image modes (look for grayscale or RGBA images), file sizes.
+- [x] Duplicate and corruption check: perceptual hashes (`imagehash`) within train and across train/test; list anything that fails to decode.
+- [x] Channel mean and std on the train split; compare with ImageNet stats, write both into `configs/base.yaml`, note which is used for which model.
+- [x] Sample grid of images with species names.
+- [x] Caption analysis: split `description` on `\n`, check each image has 10 captions, plot caption length in words, vocabulary size, top words, rare words (freq < 5) as typo candidates, odd characters.
+- [x] Caption cleaning in `src/data/text.py`: `split_description()` and `clean_caption()` (strip, lowercase, normalize punctuation/whitespace, drop empty lines). Milestone 2 captioning reuses this.
+- [x] Augmentation in `src/data/transforms.py`:
   - Train: `RandomResizedCrop(224)`, horizontal flip, small rotation, mild `ColorJitter`
   - Eval: `Resize(256)` + `CenterCrop(224)`
   - No vertical flips; keep hue jitter small because plumage color identifies species.
-- [ ] Augmentation preview figure (one image, 8 random augmentations).
-- [ ] `eda` CLI command: `python -m src.cli eda --config configs/base.yaml` writes all figures to `outputs/figures/eda/`.
-- [ ] Report notes, Data section: each finding, the decision it led to, and why.
-- [ ] Update the progress tracker and hand off to Nouran.
+- [x] Augmentation preview figure (one image, 8 random augmentations).
+- [x] `eda` CLI command: `python -m src.cli eda --config configs/base.yaml` writes all figures to `outputs/figures/eda/`.
+- [x] Report notes, Data section: each finding, the decision it led to, and why.
+- [x] Update the progress tracker and hand off to Nouran.
 
 ### Files
 `notebooks/01_eda.ipynb`, `src/visualization/eda_plots.py`, `src/data/text.py`, `src/data/transforms.py`, `docs/report_notes.md`
@@ -256,8 +256,14 @@ docs: README run commands
   - Tracking is local MLflow only (`mlflow.db`, gitignored); there is no shared tracker.
 
 ### Habiba → Nouran
-- Date:
+- Date: Mon 26 Oct 2026
 - Notes:
+  - Transforms: `from src.data.transforms import get_train_transforms, get_eval_transforms`. Both take `cfg`. `build_dataloaders(cfg)` already uses them when you pass no transforms.
+  - Normalization: set `data.normalization: cub` in `configs/cls_scratch.yaml`; the CUB train mean/std are in `base.yaml`. Pretrained models (Step 4) keep the default `imagenet`.
+  - Train is now 5,389 images: `data.exclude_train_files` drops 5 duplicates (2 of them were also in test). Val (600) and test (5,794) are unchanged.
+  - Classes are balanced in train (26–27 each) but not in test (11–30), so report macro F1 next to accuracy.
+  - `python -m src.cli eda` takes about 3 minutes; figures and `summary.json` are in `outputs/figures/eda/`. Findings and decisions are in `docs/report_notes.md`.
+  - Captions for Milestone 2: `clean_captions(description)` in `src/data/text.py`.
 
 ### Nouran → Mohamed
 - Date:
