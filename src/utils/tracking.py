@@ -58,6 +58,10 @@ class MLflowTracker(Tracker):
         import mlflow
 
         self.mlflow = mlflow
+        # Set an explicit relative URI: mlflow's own default resolves "mlflow.db" to an
+        # absolute, URL-quoted path, which breaks sqlite directory creation on Windows
+        # when the path contains a space (e.g. "C:/Users/Nouran Mokhtar/...").
+        mlflow.set_tracking_uri("sqlite:///mlflow.db")
         mlflow.set_experiment(experiment)
         self._run = None
 
