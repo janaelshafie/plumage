@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from src.utils.config import load_config, set_seed
 
@@ -55,7 +56,48 @@ def cmd_eda(args: argparse.Namespace, cfg: dict) -> int:
 
 
 def cmd_train(args: argparse.Namespace, cfg: dict) -> int:
-    return _not_implemented("train", args)
+    if args.task != "classification":
+        return _not_implemented("train", args)
+
+    from src.data.dataloaders import build_dataloaders
+    from src.evaluation.metrics import evaluate
+    from src.models.classifier import build_model
+    from src.training.trainer import Trainer, load_checkpoint
+    from src.utils.tracking import get_tracker
+    from src.visualization.curves import plot_training_curves
+
+    train_loader, val_loader, test_loader = build_dataloaders(cfg)
+    model = build_model(cfg)
+    run_name = f"{cfg['model']['encoder']}-baseline"
+
+    tracker = get_tracker(cfg)
+    with tracker.run(run_name, tags={"step": "3", "owner": "nouran", "task": "classification"}, config=cfg):
+        trainer = Trainer(model, cfg, tracker=tracker)
+        result = trainer.fit(train_loader, val_loader, run_name=run_name)
+        print(f"best val acc {result.best_val_acc:.3f} at epoch {result.best_epoch}")
+
+        curves_path = Path(cfg["output_dir"]) / "figures" / "curves" / f"{run_name}.png"
+        plot_training_curves(result.history, curves_path)
+        tracker.log_artifact(str(curves_path))
+
+        if result.checkpoint_path is not None:
+            checkpoint = load_checkpoint(result.checkpoint_path, map_location=trainer.device)
+            model.load_state_dict(checkpoint["model_state"])
+            tracker.log_artifact(str(result.checkpoint_path))
+
+        test_metrics = evaluate(model, test_loader, trainer.device, cfg["data"]["num_classes"])
+        tracker.log_metrics(
+            {
+                "test/accuracy": test_metrics["accuracy"],
+                "test/top5_accuracy": test_metrics["top5_accuracy"],
+                "test/macro_precision": test_metrics["macro_precision"],
+                "test/macro_recall": test_metrics["macro_recall"],
+                "test/macro_f1": test_metrics["macro_f1"],
+            }
+        )
+        print(f"test accuracy {test_metrics['accuracy']:.3f}  macro F1 {test_metrics['macro_f1']:.3f}")
+        print(f"Logged tracker run: {tracker.run_url}")
+    return 0
 
 
 def cmd_tune(args: argparse.Namespace, cfg: dict) -> int:
