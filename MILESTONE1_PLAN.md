@@ -18,12 +18,12 @@ Five people, five steps, run in order. Each person finishes their step, commits 
 |---|-------|------|---------|--------|-------------|
 | 1 | Jana | Foundation and data pipeline | Mon 26 Oct | ✅ Done | Mon 26 Oct |
 | 2 | Habiba | EDA, cleaning, preprocessing, augmentation | Tue 27 Oct | ✅ Done | Mon 26 Oct |
-| 3 | Nouran | From-scratch CNN, trainer, metrics | Wed 28 Oct | 🔵 In progress | |
+| 3 | Nouran | From-scratch CNN, trainer, metrics | Wed 28 Oct | 🟡 Code done, baseline run pending | |
 | 4 | Mohamed | Transfer learning and hyperparameter tuning | Thu 29 – Fri 30 Oct (2 pm) | ⚪ Waiting | |
 | 5 | Abdallah | Grad-CAM, inference, benchmarking, submission | Fri 30 – Sat 31 Oct | ⚪ Waiting | |
 | – | Everyone | Final review and LMS submission | Sun 1 Nov | ⚪ Waiting | |
 
-**Baton is currently with:** Nouran
+**Baton is currently with:** Nouran (full baseline still needs to run on Kaggle/Colab T4 before handoff to Mohamed)
 
 ---
 
@@ -127,15 +127,15 @@ docs: EDA findings and justifications
 **Goal:** Build the from-scratch encoder, the reusable trainer every later model goes through, and the evaluation module. Run and log the baseline.
 
 ### Checklist
-- [ ] Scratch encoder in `src/models/encoders.py`: ~5 blocks of `[Conv-BN-ReLU ×2, MaxPool]`, channels 32→512, global average pooling. Expose `forward_features()` (spatial map), `out_dim`, and `gradcam_layer` (last conv). Colorization in Milestone 2 reuses this encoder.
-- [ ] Classifier head and model registry in `src/models/classifier.py`: `Classifier(encoder, num_classes, dropout)` and `build_model(cfg)` that picks the encoder by name, so new encoders don't touch the trainer.
-- [ ] Generic `Trainer` in `src/training/trainer.py`: train/validate loops, AdamW, cosine schedule, mixed precision for the T4, early stopping, best-checkpoint saving, per-epoch logging through the tracker wrapper.
-- [ ] Metrics in `src/evaluation/metrics.py`: accuracy, top-5 accuracy, macro precision/recall/F1, confusion matrix; `evaluate(model, loader)`.
-- [ ] Training curves in `src/visualization/curves.py` (train vs val loss and accuracy).
-- [ ] Wire up: `python -m src.cli train --task classification --config configs/cls_scratch.yaml`
-- [ ] Run the baseline on a T4 for 30–50 epochs. Log it, evaluate on test once, upload best checkpoint to Drive.
-- [ ] Report notes: architecture table/diagram, settings, curves, results, and why accuracy is modest (6k images, 200 fine-grained classes, no pretraining).
-- [ ] Update the progress tracker and hand off to Mohamed (include the checkpoint link and run link in the PR).
+- [x] Scratch encoder in `src/models/encoders.py`: ~5 blocks of `[Conv-BN-ReLU ×2, MaxPool]`, channels 32→512, global average pooling. Expose `forward_features()` (spatial map), `out_dim`, and `gradcam_layer` (last conv). Colorization in Milestone 2 reuses this encoder.
+- [x] Classifier head and model registry in `src/models/classifier.py`: `Classifier(encoder, num_classes, dropout)` and `build_model(cfg)` that picks the encoder by name, so new encoders don't touch the trainer.
+- [x] Generic `Trainer` in `src/training/trainer.py`: train/validate loops, AdamW, cosine schedule, mixed precision for the T4, early stopping, best-checkpoint saving, per-epoch logging through the tracker wrapper.
+- [x] Metrics in `src/evaluation/metrics.py`: accuracy, top-5 accuracy, macro precision/recall/F1, confusion matrix; `evaluate(model, loader)`.
+- [x] Training curves in `src/visualization/curves.py` (train vs val loss and accuracy).
+- [x] Wire up: `python -m src.cli train --task classification --config configs/cls_scratch.yaml`
+- [ ] **Run the baseline on a T4 for 30–50 epochs. Log it, evaluate on test once, upload best checkpoint to Drive.** Not done on this CPU-only dev machine (~16 min/epoch, 8–13+ hours for 30–50 epochs) — needs Kaggle/Colab. A reduced-scale local run (96px, 3 epochs) verified the pipeline works end to end; see report notes.
+- [x] Report notes: architecture table/diagram, settings, curves, results, and why accuracy is modest (6k images, 200 fine-grained classes, no pretraining).
+- [x] Update the progress tracker and hand off to Mohamed (include the checkpoint link and run link in the PR). — tracker updated; checkpoint/run links still to come once the real baseline is run.
 
 ### Files
 `src/models/encoders.py`, `src/models/classifier.py`, `src/training/trainer.py`, `src/evaluation/metrics.py`, `src/visualization/curves.py`, `configs/cls_scratch.yaml`
@@ -266,8 +266,14 @@ docs: README run commands
   - Captions for Milestone 2: `clean_captions(description)` in `src/data/text.py`.
 
 ### Nouran → Mohamed
-- Date:
+- Date: Wed 28 Oct 2026
 - Notes:
+  - **Code is done and merged-ready; the real 30–50 epoch baseline still needs to run on Kaggle/Colab T4** before this step is truly finished — this CPU dev machine measured ~16 min/epoch at 224px, so the full run isn't practical here. Don't start Step 4 training off an unrun baseline; ping me once it's run or run it yourself off `configs/cls_scratch.yaml` (same command below) if you need to start sooner.
+  - `python -m src.cli train --task classification --config configs/cls_scratch.yaml` trains, early-stops on val accuracy, saves the best checkpoint to `outputs/checkpoints/<run_name>_best.pt`, plots curves to `outputs/figures/curves/<run_name>.png`, evaluates once on test, and logs everything to MLflow (`mlflow ui --backend-store-uri sqlite:///mlflow.db`).
+  - Registry: `build_model(cfg)` in `src/models/classifier.py` picks the encoder from `cfg["model"]["encoder"]` via `ENCODERS` in `src/models/encoders.py`. Add your pretrained backbones there (`ENCODERS["resnet50"] = ...`, etc.) with the same `forward_features()` / `out_dim` / `gradcam_layer` interface — the `Trainer`, `evaluate()` and CLI don't change.
+  - `Trainer` (`src/training/trainer.py`) reads everything from `cfg["train"]`: `epochs`, `lr`, `weight_decay`, `early_stopping_patience`, `amp`, `checkpoint_dir`. For frozen-backbone training, build your model with the backbone's params set `requires_grad_(False)` before constructing `Trainer` — the optimizer is built from `model.parameters()` and only grad-enabled params get updated.
+  - Fixed a real bug while testing: MLflow 3.x's default tracking URI breaks on Windows when the home folder has a space (e.g. this machine's `Nouran Mokhtar`). `src/utils/tracking.py` now pins `sqlite:///mlflow.db` explicitly — you shouldn't need to touch it, but if `get_tracker` ever throws a path error again, that's the place to look.
+  - `data.normalization: cub` is set in `configs/cls_scratch.yaml` for the from-scratch model; keep `imagenet` (the `base.yaml` default) for your pretrained backbones since they expect ImageNet stats.
 
 ### Mohamed → Abdallah
 - Date:

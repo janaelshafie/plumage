@@ -1,0 +1,20 @@
+# From-scratch CNN baseline.
+base: base.yaml
+
+data:
+  normalization: cub   # trained from scratch, so use the CUB train stats, not ImageNet's
+
+model:
+  encoder: scratch_cnn
+  dropout: 0.3
+
+train:
+  epochs: 40
+  lr: 0.0003
+  weight_decay: 0.0001
+  early_stopping_patience: 10
+  amp: true                            # mixed precision on CUDA (T4); no-op on CPU/MPS
+  checkpoint_dir: outputs/checkpoints
+
+tracking:
+  experiment: plumage-milestone1

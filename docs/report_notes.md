@@ -42,3 +42,41 @@ All numbers come from `python -m src.cli eda --config configs/base.yaml`, which 
 **What failed / notes**
 - pHash alone at distance ≤ 4 flagged different species photographed against uniform backgrounds. Adding dHash as a second check fixed it without lowering the threshold, which would have missed the Laysan Albatross duplicate (pHash 4, dHash 0).
 - The full EDA takes about 3 minutes because it decodes and hashes all 11,788 images.
+
+## Step 3 — From-scratch CNN, trainer and metrics (Nouran)
+
+**What**
+- `ScratchCNN` (`src/models/encoders.py`): 5 `ConvBlock`s (`Conv-BN-ReLU x2` then `MaxPool(2)`), channels 32→64→128→256→512, global average pooling. `forward_features()` returns the pre-pool spatial map (`7x7x512` at 224px input) and `gradcam_layer` exposes the last conv layer for Step 5's hooks. Registered under `ENCODERS["scratch_cnn"]` so Step 4 only has to add entries, not touch callers.
+- `Classifier` (`src/models/classifier.py`): dropout + linear head over any registered encoder's `out_dim`. `build_model(cfg)` reads `model.encoder`/`model.dropout`, so swapping to a pretrained backbone later is a one-line config change.
+- `Trainer` (`src/training/trainer.py`): AdamW, cosine LR schedule over `train.epochs`, autocast mixed precision (enabled only on CUDA — a no-op on this CPU dev machine), early stopping on val accuracy (`train.early_stopping_patience`), best-checkpoint saving (`model_state`, `epoch`, `val_acc`, full `config`), per-epoch metrics through the tracker wrapper. One `Trainer` serves every later model and every tuning trial.
+- `evaluate()` (`src/evaluation/metrics.py`): accuracy, top-5 accuracy, macro precision/recall/F1 and the confusion matrix in one pass. Macro metrics are reported because test is imbalanced (11–30 images/class, Step 2's finding).
+- `plot_training_curves()` (`src/visualization/curves.py`): train vs val loss and accuracy, two panels, one PNG.
+- Wired into the CLI: `python -m src.cli train --task classification --config configs/cls_scratch.yaml` trains, saves the best checkpoint, plots curves, evaluates once on test, and logs everything (params, per-epoch metrics, curves figure, checkpoint, test metrics) to the local MLflow tracker.
+- Architecture: 4.82M parameters total (4.72M encoder, 103k classifier head).
+
+| Block | In → Out channels | Output size @224px input |
+|---|---|---|
+| 1 | 3 → 32 | 112×112 |
+| 2 | 32 → 64 | 56×56 |
+| 3 | 64 → 128 | 28×28 |
+| 4 | 128 → 256 | 14×14 |
+| 5 | 256 → 512 | 7×7 |
+| GAP + FC | 512 → 200 | 1×1 |
+
+**Settings** (`configs/cls_scratch.yaml`): `data.normalization: cub` (Step 2's CUB train stats, not ImageNet's, since nothing here is pretrained), dropout 0.3, AdamW lr 3e-4, weight decay 1e-4, cosine schedule, up to 40 epochs with early-stopping patience 10, mixed precision on.
+
+**Why**
+- *Global average pooling, not flatten:* keeps the classifier head small (`512 -> 200` instead of `512*7*7 -> 200`) and makes the encoder input-size agnostic, which Milestone 2's colorization head also needs.
+- *`forward_features` / `gradcam_layer` on the encoder, not the classifier:* Step 5's Grad-CAM and Milestone 2's colorization decoder both need the pre-pool spatial map; exposing it on every registered encoder means neither has to special-case which model it's given.
+- *AdamW + cosine schedule over flat SGD:* adaptive per-parameter learning rates and decoupled weight decay converge faster with no LR warmup/decay tuning needed for a short-epoch budget.
+- *Early stopping on val accuracy, not val loss:* accuracy is the metric that is reported, and with 200 fine-grained classes and only ~27 train images/class, val loss can keep falling slightly while val accuracy plateaus or overfits.
+- *AMP as a no-op off CUDA:* `torch.autocast`/`GradScaler` are gated on `device.type == "cuda"`, so the same trainer code runs correctly (if slowly) on this CPU dev machine and at full speed on the T4.
+
+**Baseline run**
+- One real epoch over the full 5,389-image train set at 224px takes about 16 minutes of pure forward+backward on this CPU-only dev machine (measured with `time` around 5 raw training batches, batch size 32) — 30–50 epochs would be 8–13+ hours, far past what's practical here. This matches the plan's own assumption (Step 3's "before your turn" note: set up a Kaggle/Colab notebook) that the actual baseline run happens on a T4, not a laptop CPU.
+- To verify the full pipeline end to end on this machine, I ran a reduced-scale sanity check instead of the real baseline: same code, same `configs/cls_scratch.yaml`, but `data.image_size: 96` and `train.epochs: 3` (not committed — a throwaway config). Result: train loss 5.24→4.54, train acc 1.1%→4.2%, val acc 2.2%→4.5% over the 3 epochs, each epoch saved as the new best checkpoint, curves plotted, and test evaluation logged accuracy 4.9% / macro F1 2.9% next to each other as intended. Low numbers are expected (3 epochs, 96px, 200 fine-grained classes) — this run exists only to prove the wiring, not to report a result.
+- **The actual 40-epoch, 224px baseline still needs to run on Kaggle/Colab T4** before this step is fully done; see the handoff note below for what Mohamed (or whoever runs it) needs.
+
+**What failed / notes**
+- The first `train` run (and, it turns out, Step 1's `smoke_test.py` run too) crashed inside `get_tracker`: MLflow 3.x's default tracking URI resolves `mlflow.db` to an absolute, URL-quoted path (`sqlite:///C:/Users/Nouran%20Mokhtar/...`) and then fails to create that path's parent directory on Windows because the `%20` isn't decoded back to a space before the filesystem call. It only shows up on a machine whose user folder has a space in the name. Fixed by having `MLflowTracker.__init__` call `mlflow.set_tracking_uri("sqlite:///mlflow.db")` explicitly before `set_experiment`, which keeps mlflow from re-resolving the path itself (`src/utils/tracking.py`, regression test in `tests/test_tracking_step3.py`).
+- Local verification uses `image_size: 96` (not committed) purely because CPU time scales with image area; the committed `configs/cls_scratch.yaml` keeps `image_size: 224` inherited from `base.yaml` untouched for the real run.
