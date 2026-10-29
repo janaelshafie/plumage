@@ -1,149 +1,116 @@
-"""Single entry point: ``python -m src.cli <command> --task <task> --config <yaml>``.
+"""Command line interface. Every part of the project is run from here.
 
-Each command is a stub until its step lands:
-    eda      -> Step 2 (Habiba)
-    train    -> Step 3 (Nouran)
-    tune     -> Step 4 (Mohamed)
-    predict  -> Step 5 (Abdallah)
+    python -m src.cli eda     --config configs/base.yaml
+    python -m src.cli train   --task classification --config configs/cls_scratch.yaml
+    python -m src.cli tune    --task classification --method grid --config configs/tune_resnet50.yaml
+    python -m src.cli predict --task classification --image bird.jpg --checkpoint best.pt --gradcam
+
+`tune` (Step 4) and `predict` (Step 5) are not written yet.
 """
 
-from __future__ import annotations
-
 import argparse
-import sys
-from pathlib import Path
+import os
 
-from src.utils.config import load_config, set_seed
+import matplotlib
 
-TASKS = ["classification", "colorization", "captioning"]
+matplotlib.use("Agg")  # save figures to files without opening windows
+
+import torch
+
+from src.data.dataloaders import build_dataloaders
+from src.evaluation.metrics import evaluate
+from src.models.classifier import build_model
+from src.training.trainer import train_model
+from src.utils.config import get_device, load_config, set_seed
+from src.utils.tracking import log_file, log_folder, log_metrics, start_run
+from src.visualization.curves import plot_training_curves
+from src.visualization.eda_plots import run_eda
 
 
-def _not_implemented(name: str, args: argparse.Namespace) -> int:
-    print(f"`{name}` for task '{args.task}' is not implemented yet.")
-    return 1
+def eda_command(args, cfg):
+    summary, out_dir = run_eda(cfg)
+    print(f"Saved figures and summary.json to {out_dir}")
+    print(f"CUB train mean/std: {summary['channel_stats_train']}")
 
-
-def cmd_eda(args: argparse.Namespace, cfg: dict) -> int:
-    """Dataset-level, so ``--task`` is ignored. Figures go to ``outputs/figures/eda/``."""
-    import matplotlib
-
-    matplotlib.use("Agg")
-    from src.utils.tracking import get_tracker
-    from src.visualization.eda_plots import run_eda
-
-    summary, figures = run_eda(cfg)
-    channel = summary["channel_stats_train"]
-    print(f"Wrote {len(figures)} figures and summary.json to {figures[0].parent}")
-    print(f"CUB train mean {channel['mean']}  std {channel['std']}  (put these in data.cub_mean / cub_std)")
-
-    tracker = get_tracker(cfg)
-    with tracker.run("eda", tags={"step": "2", "owner": "habiba", "kind": "eda"}, config=cfg):
-        balance, dups, caps = summary["class_balance"], summary["duplicates"], summary["captions"]
-        tracker.log_metrics({
-            "train/imbalance_ratio": balance["train"]["imbalance_ratio"],
-            "test/imbalance_ratio": balance["test"]["imbalance_ratio"],
-            "images/failed_to_decode": len(summary["images"]["failed_to_decode"]),
-            "images/non_rgb": len(summary["images"]["non_rgb_files"]),
-            "dups/train_train_pairs": dups["train_train_pairs"],
-            "dups/train_test_pairs": dups["train_test_pairs"],
-            "captions/vocab_clean": caps["vocab_clean"],
-            "captions/words_mean": caps["caption_words_mean"],
+    with start_run(cfg, "eda"):
+        log_metrics({
+            "train/imbalance_ratio": summary["class_balance"]["train"]["imbalance_ratio"],
+            "test/imbalance_ratio": summary["class_balance"]["test"]["imbalance_ratio"],
+            "duplicates/train_train": summary["duplicates"]["train_train_pairs"],
+            "duplicates/train_test": summary["duplicates"]["train_test_pairs"],
+            "captions/vocab_clean": summary["captions"]["vocab_clean"],
         })
-        for path in [*figures, figures[0].parent / "summary.json"]:
-            tracker.log_artifact(str(path))
-        print(f"Logged tracker run: {tracker.run_url}")
-    return 0
+        log_folder(out_dir)
 
 
-def cmd_train(args: argparse.Namespace, cfg: dict) -> int:
+def train_command(args, cfg):
     if args.task != "classification":
-        return _not_implemented("train", args)
-
-    from src.data.dataloaders import build_dataloaders
-    from src.evaluation.metrics import evaluate
-    from src.models.classifier import build_model
-    from src.training.trainer import Trainer, load_checkpoint
-    from src.utils.tracking import get_tracker
-    from src.visualization.curves import plot_training_curves
+        print(f"Training for '{args.task}' is part of Milestone 2.")
+        return
 
     train_loader, val_loader, test_loader = build_dataloaders(cfg)
     model = build_model(cfg)
-    run_name = f"{cfg['model']['encoder']}-baseline"
+    run_name = cfg["model"]["encoder"] + "-baseline"
 
-    tracker = get_tracker(cfg)
-    with tracker.run(run_name, tags={"step": "3", "owner": "nouran", "task": "classification"}, config=cfg):
-        trainer = Trainer(model, cfg, tracker=tracker)
-        result = trainer.fit(train_loader, val_loader, run_name=run_name)
-        print(f"best val acc {result.best_val_acc:.3f} at epoch {result.best_epoch}")
+    with start_run(cfg, run_name):
+        history, checkpoint_path = train_model(model, train_loader, val_loader, cfg, run_name)
 
-        curves_path = Path(cfg["output_dir"]) / "figures" / "curves" / f"{run_name}.png"
-        plot_training_curves(result.history, curves_path)
-        tracker.log_artifact(str(curves_path))
+        curves_path = os.path.join(cfg["output_dir"], "figures", "curves", run_name + ".png")
+        plot_training_curves(history, curves_path)
+        log_file(curves_path)
+        log_file(checkpoint_path)
 
-        if result.checkpoint_path is not None:
-            checkpoint = load_checkpoint(result.checkpoint_path, map_location=trainer.device)
-            model.load_state_dict(checkpoint["model_state"])
-            tracker.log_artifact(str(result.checkpoint_path))
+        # Load the best epoch's weights and evaluate once on the test set.
+        device = get_device()
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        model.load_state_dict(checkpoint["model_state"])
+        results = evaluate(model, test_loader, device, cfg["data"]["num_classes"])
 
-        test_metrics = evaluate(model, test_loader, trainer.device, cfg["data"]["num_classes"])
-        tracker.log_metrics(
-            {
-                "test/accuracy": test_metrics["accuracy"],
-                "test/top5_accuracy": test_metrics["top5_accuracy"],
-                "test/macro_precision": test_metrics["macro_precision"],
-                "test/macro_recall": test_metrics["macro_recall"],
-                "test/macro_f1": test_metrics["macro_f1"],
-            }
-        )
-        print(f"test accuracy {test_metrics['accuracy']:.3f}  macro F1 {test_metrics['macro_f1']:.3f}")
-        print(f"Logged tracker run: {tracker.run_url}")
-    return 0
+        log_metrics({
+            "test/accuracy": results["accuracy"],
+            "test/top5_accuracy": results["top5_accuracy"],
+            "test/macro_precision": results["macro_precision"],
+            "test/macro_recall": results["macro_recall"],
+            "test/macro_f1": results["macro_f1"],
+        })
+        print(f"Test accuracy {results['accuracy']:.3f}, macro F1 {results['macro_f1']:.3f}")
 
 
-def cmd_tune(args: argparse.Namespace, cfg: dict) -> int:
-    return _not_implemented("tune", args)
+def tune_command(args, cfg):
+    print("`tune` is not implemented yet (Step 4).")
 
 
-def cmd_predict(args: argparse.Namespace, cfg: dict) -> int:
-    return _not_implemented("predict", args)
+def predict_command(args, cfg):
+    print("`predict` is not implemented yet (Step 5).")
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="python -m src.cli", description="Plumage: CUB-200 pipeline.")
-    sub = parser.add_subparsers(dest="command", required=True)
+def main():
+    parser = argparse.ArgumentParser(prog="python -m src.cli", description="Plumage: CUB-200 bird project")
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
-    def add(name: str, help_: str, fn, default_task: str = "classification") -> argparse.ArgumentParser:
-        p = sub.add_parser(name, help=help_)
-        p.add_argument("--task", choices=TASKS, default=default_task)
-        p.add_argument("--config", default="configs/base.yaml", help="path to a YAML config")
-        p.add_argument("--seed", type=int, default=None, help="override the config seed")
-        p.set_defaults(func=fn)
-        return p
+    eda = subparsers.add_parser("eda", help="data analysis, saves figures to outputs/figures/eda/")
+    train = subparsers.add_parser("train", help="train a model")
+    tune = subparsers.add_parser("tune", help="hyperparameter search")
+    predict = subparsers.add_parser("predict", help="predict the species of one image")
 
-    add("eda", "exploratory data analysis; writes figures to outputs/figures/eda/", cmd_eda)
-    add("train", "train a model", cmd_train)
+    # Arguments every command has
+    for sub in [eda, train, tune, predict]:
+        sub.add_argument("--task", default="classification",
+                         choices=["classification", "colorization", "captioning"])
+        sub.add_argument("--config", default="configs/base.yaml", help="path to a YAML config")
 
-    tune = add("tune", "hyperparameter search", cmd_tune)
     tune.add_argument("--method", choices=["grid", "random"], default="grid")
-    tune.add_argument("--n-trials", type=int, default=None, help="random search trials")
-
-    predict = add("predict", "run inference on one image", cmd_predict)
-    predict.add_argument("--image", required=True, help="path to an image file")
-    predict.add_argument("--checkpoint", required=True, help="path to a model checkpoint")
+    predict.add_argument("--image", required=True, help="path to an image")
+    predict.add_argument("--checkpoint", required=True, help="path to a saved model (.pt)")
     predict.add_argument("--gradcam", action="store_true", help="also save a Grad-CAM heatmap")
-    predict.add_argument("--top-k", type=int, default=5)
 
-    return parser
-
-
-def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    args = parser.parse_args()
     cfg = load_config(args.config)
-    if args.seed is not None:
-        cfg["seed"] = args.seed
-    set_seed(cfg.get("seed", 42))
-    return args.func(args, cfg)
+    set_seed(cfg["seed"])
+
+    commands = {"eda": eda_command, "train": train_command, "tune": tune_command, "predict": predict_command}
+    commands[args.command](args, cfg)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

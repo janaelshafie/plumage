@@ -1,35 +1,30 @@
-"""Train / eval image transforms. Settings live under ``data.augment`` in the config.
+"""Image transforms (preprocessing and augmentation). Settings are under `data.augment` in the config.
 
-Train: ``RandomResizedCrop`` + horizontal flip + small rotation + mild color jitter.
-Eval:  ``Resize(256)`` + ``CenterCrop(224)``.
+Training: random crop, horizontal flip, small rotation and small color changes.
+Val/test: resize to 256 and take the center 224x224 crop (no randomness).
 
-No vertical flips (birds are never upside down in CUB) and hue jitter stays
-small because plumage color is what separates many species.
+We don't flip vertically (birds are never upside down in CUB), and we keep the
+hue change very small because plumage color is what tells many species apart.
 """
-
-from __future__ import annotations
-
-from typing import Callable
 
 import torch
 from torchvision import transforms as T
 
 
-def get_norm_stats(cfg: dict) -> tuple[list[float], list[float]]:
-    """``(mean, std)`` picked by ``data.normalization`` (``imagenet`` or ``cub``)."""
+def get_mean_std(cfg):
+    """ImageNet mean/std for pretrained models, CUB mean/std for models trained from scratch."""
     data = cfg["data"]
-    name = data.get("normalization", "imagenet")
-    if name not in ("imagenet", "cub"):
-        raise ValueError(f"data.normalization must be 'imagenet' or 'cub', got {name!r}")
-    return data[f"{name}_mean"], data[f"{name}_std"]
+    if data["normalization"] == "cub":
+        return data["cub_mean"], data["cub_std"]
+    return data["imagenet_mean"], data["imagenet_std"]
 
 
-def get_train_transforms(cfg: dict) -> Callable:
+def get_train_transforms(cfg):
     size = cfg["data"]["image_size"]
     aug = cfg["data"]["augment"]
-    mean, std = get_norm_stats(cfg)
+    mean, std = get_mean_std(cfg)
     return T.Compose([
-        T.RandomResizedCrop(size, scale=tuple(aug["crop_scale"])),
+        T.RandomResizedCrop(size, scale=aug["crop_scale"]),
         T.RandomHorizontalFlip(aug["hflip_p"]),
         T.RandomRotation(aug["rotation_deg"]),
         T.ColorJitter(**aug["color_jitter"]),
@@ -38,9 +33,9 @@ def get_train_transforms(cfg: dict) -> Callable:
     ])
 
 
-def get_eval_transforms(cfg: dict) -> Callable:
+def get_eval_transforms(cfg):
     size = cfg["data"]["image_size"]
-    mean, std = get_norm_stats(cfg)
+    mean, std = get_mean_std(cfg)
     return T.Compose([
         T.Resize(cfg["data"]["augment"]["eval_resize"]),
         T.CenterCrop(size),
@@ -49,9 +44,8 @@ def get_eval_transforms(cfg: dict) -> Callable:
     ])
 
 
-def denormalize(images: torch.Tensor, mean: list[float], std: list[float]) -> torch.Tensor:
-    """Undo ``Normalize`` for plotting; works on ``[3, H, W]`` or ``[B, 3, H, W]``."""
-    shape = (3, 1, 1)
-    mean_t = torch.tensor(mean, dtype=images.dtype, device=images.device).view(shape)
-    std_t = torch.tensor(std, dtype=images.dtype, device=images.device).view(shape)
-    return (images * std_t + mean_t).clamp(0, 1)
+def denormalize(image, mean, std):
+    """Undo Normalize on a [3, H, W] tensor so it can be shown with matplotlib."""
+    mean = torch.tensor(mean).view(3, 1, 1)
+    std = torch.tensor(std).view(3, 1, 1)
+    return (image * std + mean).clamp(0, 1)
