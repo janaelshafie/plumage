@@ -1,30 +1,28 @@
-"""Train vs validation loss/accuracy curves from a ``Trainer`` history."""
+"""Training curves: train vs validation loss and accuracy."""
 
-from __future__ import annotations
+import os
 
-from pathlib import Path
+import matplotlib.pyplot as plt
 
 
-def plot_training_curves(history: dict[str, list[float]], out_path: str | Path) -> Path:
-    """Save a two-panel (loss, accuracy) figure of ``history`` to ``out_path``."""
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    out_path = Path(out_path)
+def plot_training_curves(history, path):
+    """Save a figure with two plots (loss and accuracy) per epoch to `path`."""
     epochs = range(1, len(history["train_loss"]) + 1)
-
     fig, (loss_ax, acc_ax) = plt.subplots(1, 2, figsize=(10, 4))
-    for ax, key, title in [(loss_ax, "loss", "Loss"), (acc_ax, "acc", "Accuracy")]:
-        ax.plot(epochs, history[f"train_{key}"], label="train")
-        ax.plot(epochs, history[f"val_{key}"], label="val")
-        ax.set_title(title)
-        ax.set_xlabel("epoch")
-        ax.legend()
-    fig.tight_layout()
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=150)
+    loss_ax.plot(epochs, history["train_loss"], label="train")
+    loss_ax.plot(epochs, history["val_loss"], label="val")
+    loss_ax.set_title("Loss")
+    loss_ax.set_xlabel("epoch")
+    loss_ax.legend()
+
+    acc_ax.plot(epochs, history["train_acc"], label="train")
+    acc_ax.plot(epochs, history["val_acc"], label="val")
+    acc_ax.set_title("Accuracy")
+    acc_ax.set_xlabel("epoch")
+    acc_ax.legend()
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
     plt.close(fig)
-    return out_path

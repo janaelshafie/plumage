@@ -1,54 +1,43 @@
-"""Classification metrics shared by every model (scratch, transfer, tuning)."""
-
-from __future__ import annotations
-
-from typing import Any
+"""Classification metrics, used for every model."""
 
 import torch
-import torch.nn as nn
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
-from torch.utils.data import DataLoader
-
-
-def topk_accuracy(logits: torch.Tensor, labels: torch.Tensor, k: int = 5) -> float:
-    """Fraction of rows where the true label is among the top ``k`` logits."""
-    k = min(k, logits.shape[1])
-    top_k = logits.topk(k, dim=1).indices
-    return (top_k == labels.unsqueeze(1)).any(dim=1).float().mean().item()
 
 
 @torch.no_grad()
-def evaluate(
-    model: nn.Module,
-    loader: DataLoader,
-    device: torch.device,
-    num_classes: int,
-    top_k: int = 5,
-) -> dict[str, Any]:
-    """Run ``model`` over ``loader`` and return accuracy, top-k accuracy, macro P/R/F1
-    and the confusion matrix. Macro metrics matter here because CUB's test split is
-    imbalanced (11-30 images per class) while accuracy alone hides the rare classes.
+def evaluate(model, loader, device, num_classes):
+    """Run the model on a whole loader and compute the metrics.
+
+    accuracy         share of images whose top prediction is the right species
+    top5_accuracy    share of images where the right species is in the 5 highest scores
+    macro_precision, macro_recall, macro_f1
+                     computed for each species and then averaged, so every species
+                     counts the same. This matters because the test set has
+                     11 to 30 images per species, and accuracy alone hides the small ones.
+    confusion_matrix rows = true species, columns = predicted species
     """
     model.eval()
-    all_logits, all_labels = [], []
+    all_outputs, all_labels = [], []
     for images, labels in loader:
-        images = images.to(device, non_blocking=True)
-        all_logits.append(model(images).cpu())
+        outputs = model(images.to(device))
+        all_outputs.append(outputs.cpu())
         all_labels.append(labels)
-    logits = torch.cat(all_logits)
+
+    outputs = torch.cat(all_outputs)
     labels = torch.cat(all_labels)
-    predictions = logits.argmax(dim=1)
+    predictions = outputs.argmax(dim=1)
+
+    top5 = outputs.topk(5, dim=1).indices                       # [N, 5]
+    top5_correct = (top5 == labels.unsqueeze(1)).any(dim=1)     # is the label one of the 5?
 
     precision, recall, f1, _ = precision_recall_fscore_support(
-        labels.numpy(), predictions.numpy(), average="macro", zero_division=0
-    )
+        labels, predictions, average="macro", zero_division=0)
+
     return {
         "accuracy": (predictions == labels).float().mean().item(),
-        f"top{top_k}_accuracy": topk_accuracy(logits, labels, top_k),
-        "macro_precision": float(precision),
-        "macro_recall": float(recall),
-        "macro_f1": float(f1),
-        "confusion_matrix": confusion_matrix(labels.numpy(), predictions.numpy(), labels=list(range(num_classes))),
-        "labels": labels.numpy(),
-        "predictions": predictions.numpy(),
+        "top5_accuracy": top5_correct.float().mean().item(),
+        "macro_precision": precision,
+        "macro_recall": recall,
+        "macro_f1": f1,
+        "confusion_matrix": confusion_matrix(labels, predictions, labels=list(range(num_classes))),
     }

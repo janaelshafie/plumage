@@ -1,73 +1,51 @@
-"""Config loading and reproducibility helpers shared by every step."""
-
-from __future__ import annotations
+"""Small helpers used everywhere: load a config, set the random seed, pick the device."""
 
 import os
 import random
-from pathlib import Path
-from typing import Any
 
 import numpy as np
 import torch
 import yaml
 
 
-def _deep_merge(base: dict, override: dict) -> dict:
-    """Recursively merge ``override`` into a copy of ``base``."""
-    merged = dict(base)
-    for key, value in override.items():
-        if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = _deep_merge(merged[key], value)
-        else:
-            merged[key] = value
-    return merged
+def load_config(path):
+    """Read a YAML config file into a dict.
 
-
-def load_config(path: str | os.PathLike) -> dict[str, Any]:
-    """Load a YAML config.
-
-    A config may set ``base: other.yaml`` (relative to its own folder) to inherit
-    from another config; keys in the child override the parent. This lets
-    ``cls_scratch.yaml`` hold only what differs from ``base.yaml``.
+    If the file has a line `base: base.yaml`, that file is loaded first and the
+    values in this file replace the ones from base. This way cls_scratch.yaml
+    only needs to list what is different from base.yaml.
     """
-    path = Path(path)
-    with open(path, "r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f) or {}
+    with open(path, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
 
-    parent = cfg.pop("base", None)
-    if parent is not None:
-        cfg = _deep_merge(load_config(path.parent / parent), cfg)
+    if "base" in cfg:
+        base_path = os.path.join(os.path.dirname(path), cfg.pop("base"))
+        cfg = merge_configs(load_config(base_path), cfg)
     return cfg
 
 
-def set_seed(seed: int, deterministic: bool = False) -> None:
-    """Seed python, numpy and torch (CPU and CUDA).
+def merge_configs(base, override):
+    """Copy of `base` with the values of `override` on top.
 
-    ``deterministic=True`` also forces deterministic cuDNN kernels, which is
-    slower; leave it off for normal training.
+    Sections like `data:` are merged key by key, so overriding
+    `data.normalization` keeps the rest of `data` from base.
     """
+    result = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = merge_configs(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def set_seed(seed):
+    """Seed python, numpy and torch so runs can be repeated."""
     random.seed(seed)
     np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    os.environ["PYTHONHASHSEED"] = str(seed)
-    torch.backends.cudnn.deterministic = deterministic
-    torch.backends.cudnn.benchmark = not deterministic
+    torch.manual_seed(seed)  # also seeds the GPU
 
 
-def seed_worker(worker_id: int) -> None:
-    """DataLoader ``worker_init_fn`` so each worker's random augmentations are reproducible."""
-    worker_seed = torch.initial_seed() % 2**32
-    np.random.seed(worker_seed)
-    random.seed(worker_seed)
-
-
-def get_device(preferred: str | None = None) -> torch.device:
-    """Return ``preferred`` if given, otherwise CUDA, then Apple MPS, then CPU."""
-    if preferred:
-        return torch.device(preferred)
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
+def get_device():
+    """Use the GPU if there is one, otherwise the CPU."""
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")

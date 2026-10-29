@@ -33,7 +33,7 @@ Five people, five steps, run in order. Each person finishes their step, commits 
 - **Commit from your own account,** small and often. Several meaningful commits per person, never one big upload at the end.
 - **Open a PR; the previous person reviews it.** Reviewing is how everyone learns the whole project for the individual discussion (35% of the grade).
 - **No final logic in notebooks.** Explore in `notebooks/`, but anything kept moves into `src/` and runs through the CLI.
-- **Log every run** through the tracker wrapper (local MLflow). Never commit checkpoints or data; checkpoints go to the team Google Drive folder.
+- **Log every run** in MLflow (`src/utils/tracking.py`). Never commit checkpoints or data; checkpoints go to the team Google Drive folder.
 - **Write report notes** in `docs/report_notes.md` under your step: what you did, why, and what failed.
 - **Use the "Before your turn" time.** Don't commit early, but prepare so your step goes fast.
 
@@ -72,7 +72,7 @@ feat(cli): train/predict/eda/tune skeleton
 
 ### Ready to hand off when
 - `python -m src.cli --help` runs
-- A smoke test pulls one batch with shape `[B, 3, H, W]` and labels in 0–199
+- One batch from the dataloaders has shape `[B, 3, H, W]` and labels in 0–199
 - A test run appears in the local MLflow tracker
 
 ---
@@ -127,9 +127,9 @@ docs: EDA findings and justifications
 **Goal:** Build the from-scratch encoder, the reusable trainer every later model goes through, and the evaluation module. Run and log the baseline.
 
 ### Checklist
-- [x] Scratch encoder in `src/models/encoders.py`: ~5 blocks of `[Conv-BN-ReLU ×2, MaxPool]`, channels 32→512, global average pooling. Expose `forward_features()` (spatial map), `out_dim`, and `gradcam_layer` (last conv). Colorization in Milestone 2 reuses this encoder.
-- [x] Classifier head and model registry in `src/models/classifier.py`: `Classifier(encoder, num_classes, dropout)` and `build_model(cfg)` that picks the encoder by name, so new encoders don't touch the trainer.
-- [x] Generic `Trainer` in `src/training/trainer.py`: train/validate loops, AdamW, cosine schedule, mixed precision for the T4, early stopping, best-checkpoint saving, per-epoch logging through the tracker wrapper.
+- [x] Scratch encoder in `src/models/encoders.py`: ~5 blocks of `[Conv-BN-ReLU ×2, MaxPool]`, channels 32→512, global average pooling. Expose `forward_features()` (spatial map), `out_dim`, and `get_gradcam_layer()` (last conv). Colorization in Milestone 2 reuses this encoder.
+- [x] Classifier head in `src/models/classifier.py`: `Classifier(encoder, num_classes, dropout)` and `build_model(cfg)` that picks the encoder by name, so new encoders don't touch the trainer.
+- [x] `train_model()` in `src/training/trainer.py`: train/validate loops, AdamW, cosine schedule, mixed precision for the T4, early stopping, best-checkpoint saving, per-epoch logging to MLflow.
 - [x] Metrics in `src/evaluation/metrics.py`: accuracy, top-5 accuracy, macro precision/recall/F1, confusion matrix; `evaluate(model, loader)`.
 - [x] Training curves in `src/visualization/curves.py` (train vs val loss and accuracy).
 - [x] Wire up: `python -m src.cli train --task classification --config configs/cls_scratch.yaml`
@@ -160,75 +160,76 @@ exp: scratch baseline config
 ## Step 4 — Mohamed: Transfer learning and hyperparameter tuning
 
 **When:** Thu 29 – Fri 30 Oct (2 pm)
-**Before your turn:** Read the trainer interface in Nouran's PR; pre-download ResNet-50 and EfficientNet-B0 weights in your Kaggle notebook.
-**Goal:** Add pretrained backbones through the same registry, compare frozen vs fine-tuned, run grid and random search, and train the final selected model.
+**Before your turn:** Look at `ScratchCNN` and `build_encoder()` in `src/models/encoders.py`, and at `train_model()` in `src/training/trainer.py`.
+**Goal:** Add one pretrained model, try it frozen and fine-tuned, tune it with grid and random search, and train the final model.
 
 ### Checklist
-- [ ] Pretrained encoders in the registry: ResNet-50 (`IMAGENET1K_V2`) and a lighter one (e.g. EfficientNet-B0), with the same `forward_features` / `out_dim` / `gradcam_layer` interface.
-- [ ] Two transfer strategies: frozen backbone + trained head, and full fine-tuning with a lower LR on the backbone than on the head.
-- [ ] Tuning module `src/training/tuning.py`: `grid_search(space, n_epochs)` and `random_search(space, n_trials, n_epochs)`. Every trial is a tracked run tagged with its method.
-- [ ] Grid search: e.g. learning rate × weight decay (3×3 = 9 trials) on fine-tuned ResNet-50, short runs (~8 epochs) to fit the T4 budget.
-- [ ] Random search with the same budget: 9 trials from the same ranges (log-uniform LR).
-- [ ] Compare the two methods: table + plot of best val accuracy, number of trials, total time. (Optuna optional.)
-- [ ] `tune` CLI: `python -m src.cli tune --task classification --method grid --config configs/tune_resnet50.yaml`
-- [ ] Retrain the best configuration at full length, evaluate on test, upload checkpoint to Drive.
-- [ ] Scratch vs transfer comparison table: accuracy, macro F1, parameters, training time for every model.
-- [ ] Report notes: search spaces, why those hyperparameters, results, final model choice.
-- [ ] Update the progress tracker and hand off to Abdallah.
+- [ ] Add a `ResNet50Encoder` class in `src/models/encoders.py`: load `torchvision.models.resnet50(weights="IMAGENET1K_V2")`, remove its last layer, and give it the same methods as `ScratchCNN` (`forward_features`, `forward`, `out_dim`, `get_gradcam_layer`). Add `"resnet50"` to `build_encoder()`.
+- [ ] Add `freeze_backbone: true/false` under `model:` in the config. If true, set `requires_grad = False` on the encoder's parameters so only the last layer trains.
+- [ ] Two configs: `configs/cls_resnet50_frozen.yaml` and `configs/cls_resnet50_finetune.yaml` (keep `normalization: imagenet`). Train both with the normal `train` command.
+- [ ] `src/training/tuning.py` with two simple functions:
+  - `grid_search(cfg)`: tries every combination of learning rate `[1e-4, 3e-4]` × weight decay `[1e-4, 1e-3]` = 4 trials
+  - `random_search(cfg, n_trials=4)`: picks 4 random combinations from the same ranges
+  - Each trial is a short `train_model()` run (~5 epochs) and its own MLflow run. Print the best one at the end.
+- [ ] Add `tune` to the CLI: `python -m src.cli tune --task classification --method grid --config configs/cls_resnet50_finetune.yaml`
+- [ ] Small table: grid vs random (best val accuracy, number of trials, total time).
+- [ ] Train the best setting for the full number of epochs, evaluate on test, and upload the checkpoint to Drive.
+- [ ] Small table: scratch vs frozen vs fine-tuned (test accuracy, macro F1, number of parameters, training time).
+- [ ] Report notes, then update the progress tracker and hand off to Abdallah.
 
 ### Files
-`src/models/encoders.py` (extend), `src/training/tuning.py`, `configs/cls_resnet50.yaml`, `configs/cls_effnet_b0.yaml`, `configs/tune_resnet50.yaml`
+`src/models/encoders.py`, `src/training/tuning.py`, `src/cli.py`, `configs/cls_resnet50_frozen.yaml`, `configs/cls_resnet50_finetune.yaml`
 
 ### Example commits
 ```
-feat(models): pretrained ResNet-50 and EfficientNet encoders
-feat(training): frozen vs fine-tune strategies
-feat(tuning): grid and random search
-feat(cli): tune command
-exp: final tuned ResNet-50 config
+add pretrained ResNet-50 encoder
+add option to freeze the backbone
+add grid and random search
+add tune command to the CLI
+config for the final tuned model
 ```
 
 ### Ready to hand off when
-- Best model checkpoint is on Drive with its config committed
-- Grid vs random comparison table exists
-- Scratch vs transfer table exists
+- The best checkpoint is on Drive and its config is committed
+- Both tables are in the report notes
 
 ---
 
 ## Step 5 — Abdallah: Grad-CAM, inference, benchmarking and submission
 
 **When:** Fri 30 – Sat 31 Oct
-**Before your turn:** Read the Grad-CAM paper (Selvaraju et al., 2017) and try hooks on Nouran's scratch checkpoint.
-**Goal:** Explain the models with Grad-CAM, make inference work from the CLI, collect published results, and package Milestone 1 so it reproduces from a fresh clone.
+**Before your turn:** Read how Grad-CAM works (Selvaraju et al., 2017) and look at `get_gradcam_layer()` in `src/models/encoders.py`.
+**Goal:** Show what the models look at with Grad-CAM, add the `predict` command, compare with published results, and submit.
 
 ### Checklist
-- [ ] Grad-CAM in `src/visualization/gradcam.py`: own implementation with forward and backward hooks on `encoder.gradcam_layer`, so it works for every registered encoder.
-- [ ] Grad-CAM figures: correct high-confidence predictions, wrong predictions (true vs predicted), and the same images under scratch vs transfer model side by side.
-- [ ] Error analysis: most-confused species pairs from the confusion matrix, with Grad-CAM on a few.
-- [ ] `predict` CLI: `python -m src.cli predict --task classification --image path/to/bird.jpg --checkpoint ... --gradcam` prints top-5 species and saves the heatmap.
-- [ ] Benchmark notes (`docs/benchmark.md`): published CUB-200-2011 accuracies for the same backbones, with sources, split and metric, and why numbers differ (input size, epochs, ImageNet overlap with CUB).
-- [ ] README: exact, copy-pasteable training and inference commands, and where checkpoints live.
-- [ ] Fresh-clone reproducibility check on a new Colab: install, run `eda` and one short `train`. Fix whatever breaks.
-- [ ] Compile everyone's report notes and tracker screenshots into the Milestone 1 write-up.
-- [ ] Prepare the LMS submission: repo link, Drive link with checkpoints, write-up.
+- [ ] `src/visualization/gradcam.py`: our own Grad-CAM.
+  - Use a forward hook and a backward hook on `model.get_gradcam_layer()` to save the feature maps and their gradients.
+  - Average the gradients to get one weight per channel, take the weighted sum of the feature maps, apply ReLU, resize to the image size, and draw it over the image.
+- [ ] Grad-CAM figures: a few correct predictions, a few wrong ones (show true vs predicted), and the same images with the scratch model vs the ResNet-50 model.
+- [ ] Error analysis: use the confusion matrix from `evaluate()` to list the 5 most confused species pairs.
+- [ ] Add `predict` to the CLI: `python -m src.cli predict --task classification --image bird.jpg --checkpoint best.pt --gradcam`. It prints the top-5 species and saves the heatmap. The checkpoint already contains the config, so the model can be rebuilt with `build_model(checkpoint["config"])`.
+- [ ] `docs/benchmark.md`: a small table with 2–3 published CUB-200 accuracies for ResNet-50 (with links), next to ours, and a few sentences on why they differ (image size, epochs, tricks).
+- [ ] README: add the final `train`, `tune` and `predict` commands and the Drive link for checkpoints.
+- [ ] Clone the repo on a fresh Colab, install, and run `eda` and a short `train`. Fix anything that breaks.
+- [ ] Put everyone's report notes and MLflow screenshots together into the Milestone 1 write-up.
 - [ ] Update the progress tracker.
 
 ### Files
-`src/visualization/gradcam.py`, `src/evaluation/error_analysis.py`, `src/inference/predict.py`, `docs/benchmark.md`, `README.md` (final)
+`src/visualization/gradcam.py`, `src/cli.py`, `docs/benchmark.md`, `README.md`
 
 ### Example commits
 ```
-feat(viz): Grad-CAM with hooks
-feat(eval): confusion pair analysis
-feat(cli): classification predict with Grad-CAM
-docs: benchmark comparison
-docs: README run commands
+add Grad-CAM
+add Grad-CAM figures for correct and wrong predictions
+add predict command to the CLI
+add benchmark comparison
+update README with final commands
 ```
 
 ### Ready to hand off when
-- `predict` works on any image with any checkpoint
+- `predict` works on an image with both checkpoints
 - Grad-CAM figures for correct and wrong cases exist
-- A fresh clone reproduces the EDA and a short training run
+- A fresh Colab clone runs `eda` and a short `train`
 
 ---
 
@@ -247,18 +248,18 @@ docs: README run commands
 ### Jana → Habiba
 - Date: Mon 26 Oct 2026
 - Notes:
-  - Setup and checks are in the README: `pip install -r requirements.txt`, then `python -m pytest` and `python scripts/smoke_test.py`. The first run downloads ~1.2 GB into `data/hf_cache/`.
+  - Setup and checks are in the README: `pip install -r requirements.txt`, then `python -m pytest`. The first run downloads ~1.2 GB into `data/hf_cache/`.
   - Splits: train 5,394 / val 600 (3 per class, seed 42, `configs/splits/val_indices.json`, don't regenerate) / test 5,794.
-  - `CUBDataset(split, transform, indices)` returns `(tensor, label)`. For EDA without decoding images use `ds.labels`, `ds.get_description(i)`, `ds.get_file_name(i)`, or the raw HF dataset via `ds.hf`.
-  - `build_dataloaders(cfg, train_tf, eval_tf)` takes your transforms; until `src/data/transforms.py` exists it falls back to a resize + center-crop placeholder (`default_transform` in `src/data/dataloaders.py`).
+  - `CUBDataset(hf_data, indices, transform)` returns `(tensor, label)`. For EDA load the raw split with `load_cub("train", cfg)` and read columns directly (`hf["label"]`, `hf["description"]`).
+  - `build_dataloaders(cfg)` builds the transforms from `src/data/transforms.py`.
   - Put the CUB mean/std next to the ImageNet ones under `data:` in `configs/base.yaml`.
-  - The `eda` CLI stub is `cmd_eda` in `src/cli.py`; replace its body.
+  - The `eda` CLI command is `eda_command` in `src/cli.py`.
   - Tracking is local MLflow only (`mlflow.db`, gitignored); there is no shared tracker.
 
 ### Habiba → Nouran
 - Date: Mon 26 Oct 2026
 - Notes:
-  - Transforms: `from src.data.transforms import get_train_transforms, get_eval_transforms`. Both take `cfg`. `build_dataloaders(cfg)` already uses them when you pass no transforms.
+  - Transforms: `from src.data.transforms import get_train_transforms, get_eval_transforms`. Both take `cfg`. `build_dataloaders(cfg)` already uses them.
   - Normalization: set `data.normalization: cub` in `configs/cls_scratch.yaml`; the CUB train mean/std are in `base.yaml`. Pretrained models (Step 4) keep the default `imagenet`.
   - Train is now 5,389 images: `data.exclude_train_files` drops 5 duplicates (2 of them were also in test). Val (600) and test (5,794) are unchanged.
   - Classes are balanced in train (26–27 each) but not in test (11–30), so report macro F1 next to accuracy.
@@ -270,9 +271,9 @@ docs: README run commands
 - Notes:
   - **Code is done and merged-ready; the real 30–50 epoch baseline still needs to run on Kaggle/Colab T4** before this step is truly finished — this CPU dev machine measured ~16 min/epoch at 224px, so the full run isn't practical here. Don't start Step 4 training off an unrun baseline; ping me once it's run or run it yourself off `configs/cls_scratch.yaml` (same command below) if you need to start sooner.
   - `python -m src.cli train --task classification --config configs/cls_scratch.yaml` trains, early-stops on val accuracy, saves the best checkpoint to `outputs/checkpoints/<run_name>_best.pt`, plots curves to `outputs/figures/curves/<run_name>.png`, evaluates once on test, and logs everything to MLflow (`mlflow ui --backend-store-uri sqlite:///mlflow.db`).
-  - Registry: `build_model(cfg)` in `src/models/classifier.py` picks the encoder from `cfg["model"]["encoder"]` via `ENCODERS` in `src/models/encoders.py`. Add your pretrained backbones there (`ENCODERS["resnet50"] = ...`, etc.) with the same `forward_features()` / `out_dim` / `gradcam_layer` interface — the `Trainer`, `evaluate()` and CLI don't change.
-  - `Trainer` (`src/training/trainer.py`) reads everything from `cfg["train"]`: `epochs`, `lr`, `weight_decay`, `early_stopping_patience`, `amp`, `checkpoint_dir`. For frozen-backbone training, build your model with the backbone's params set `requires_grad_(False)` before constructing `Trainer` — the optimizer is built from `model.parameters()` and only grad-enabled params get updated.
-  - Fixed a real bug while testing: MLflow 3.x's default tracking URI breaks on Windows when the home folder has a space (e.g. this machine's `Nouran Mokhtar`). `src/utils/tracking.py` now pins `sqlite:///mlflow.db` explicitly — you shouldn't need to touch it, but if `get_tracker` ever throws a path error again, that's the place to look.
+  - Encoders: `build_model(cfg)` in `src/models/classifier.py` calls `build_encoder(cfg["model"]["encoder"])` in `src/models/encoders.py`. Add your pretrained backbones as new classes there with the same `forward_features()` / `forward()` / `out_dim` / `get_gradcam_layer()`, and add their names to `build_encoder()`. `train_model()`, `evaluate()` and the CLI don't change.
+  - `train_model(model, train_loader, val_loader, cfg, run_name)` (`src/training/trainer.py`) reads everything from `cfg["train"]`: `epochs`, `lr`, `weight_decay`, `early_stopping_patience`, `amp`, `checkpoint_dir`. It returns `(history, checkpoint_path)`. For frozen-backbone training, set the backbone's params to `requires_grad_(False)` before calling it.
+  - Fixed a real bug while testing: MLflow 3.x's default tracking URI breaks on Windows when the home folder has a space (e.g. this machine's `Nouran Mokhtar`). `start_run()` in `src/utils/tracking.py` sets `sqlite:///mlflow.db` itself, so you shouldn't need to touch it.
   - `data.normalization: cub` is set in `configs/cls_scratch.yaml` for the from-scratch model; keep `imagenet` (the `base.yaml` default) for your pretrained backbones since they expect ImageNet stats.
 
 ### Mohamed → Abdallah
