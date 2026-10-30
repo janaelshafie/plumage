@@ -1,7 +1,5 @@
 # Milestone 1 — Report notes
 
-Each of us writes under our own step: what we did, why, and what went wrong.
-
 ## Step 1 — Project setup and data pipeline (Jana)
 
 **What I did**
