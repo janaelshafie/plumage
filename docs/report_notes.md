@@ -72,9 +72,25 @@ All numbers come from `python -m src.cli eda --config configs/base.yaml`. It sav
 - *Mixed precision only on GPU:* the same code runs on a laptop CPU and on the T4.
 
 **Baseline run**
-- One epoch at 224px takes about 16 minutes on my CPU, so 30–50 epochs would take 8–13 hours. The full run has to be done on a Kaggle/Colab T4.
+- One epoch at 224px takes about 16 minutes on my CPU, so 30–50 epochs would take 8–13 hours. So we did the full run on a Kaggle T4 GPU.
 - To check that everything works, I did a short run with 96px images and 3 epochs (temporary config, not committed): train loss went from 5.24 to 4.54, val accuracy from 2.2% to 4.5%, and test accuracy was 4.9% (macro F1 2.9%). The numbers are low because it was only 3 epochs on small images. This run was only to test the code.
-- **The real 40-epoch, 224px baseline still needs to run on a GPU.**
+- **Full run (40 epochs, 224px, Kaggle T4):**
+
+| Metric | Result |
+|---|---|
+| Best val accuracy | 38.3% (epoch 39) |
+| Test accuracy | 40.2% |
+| Top-5 test accuracy | 72% |
+| Macro F1 (test) | 38.8% |
+| Final train accuracy | 47.3% |
+
+![Training curves](figures/scratch_baseline_curves.png)
+
+- Random guessing would give 0.5%, so 40% is much better than chance, but it is still modest. We only have about 27 training images per species, the species look very alike, and the model starts with no pretrained knowledge.
+- Early stopping didn't trigger, because val accuracy was still improving near the end. The model might gain a little more with more epochs, but the learning rate was almost 0 by then.
+- Train accuracy (47.3%) is about 9 points above val (38.3%), so there is some overfitting, but not much. Dropout and augmentation helped here.
+- Test accuracy came out a bit higher than val. Val has only 600 images, so its number moves around by a few points. We didn't use test for any decision.
+- Macro F1 is close to accuracy, so the model isn't only doing well on the species with more test images.
 
 **Problems**
 - The first `train` run crashed when starting MLflow. On Windows, MLflow's default database path breaks when the user folder name has a space (`C:/Users/Nouran Mokhtar/...`). We fixed it by setting the path ourselves with `mlflow.set_tracking_uri("sqlite:///mlflow.db")` in `start_run()`.
