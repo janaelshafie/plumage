@@ -18,12 +18,12 @@ Five people, five steps, run in order. Each person finishes their step, commits 
 |---|-------|------|---------|--------|-------------|
 | 1 | Jana | Foundation and data pipeline | Mon 26 Oct | ✅ Done | Mon 26 Oct |
 | 2 | Habiba | EDA, cleaning, preprocessing, augmentation | Tue 27 Oct | ✅ Done | Mon 26 Oct |
-| 3 | Nouran | From-scratch CNN, trainer, metrics | Wed 28 Oct | 🟡 Code done, baseline run pending | |
-| 4 | Mohamed | Transfer learning and hyperparameter tuning | Thu 29 – Fri 30 Oct (2 pm) | ⚪ Waiting | |
+| 3 | Nouran | From-scratch CNN, trainer, metrics | Wed 28 Oct | ✅ Done | Fri 30 Oct |
+| 4 | Mohamed | Transfer learning and hyperparameter tuning | Thu 29 – Fri 30 Oct (2 pm) | 🔵 In progress | |
 | 5 | Abdallah | Grad-CAM, inference, benchmarking, submission | Fri 30 – Sat 31 Oct | ⚪ Waiting | |
 | – | Everyone | Final review and LMS submission | Sun 1 Nov | ⚪ Waiting | |
 
-**Baton is currently with:** Nouran (full baseline still needs to run on Kaggle/Colab T4 before handoff to Mohamed)
+**Baton is currently with:** Mohamed
 
 ---
 
@@ -133,9 +133,9 @@ docs: EDA findings and justifications
 - [x] Metrics in `src/evaluation/metrics.py`: accuracy, top-5 accuracy, macro precision/recall/F1, confusion matrix; `evaluate(model, loader)`.
 - [x] Training curves in `src/visualization/curves.py` (train vs val loss and accuracy).
 - [x] Wire up: `python -m src.cli train --task classification --config configs/cls_scratch.yaml`
-- [ ] **Run the baseline on a T4 for 30–50 epochs. Log it, evaluate on test once, upload best checkpoint to Drive.** Not done on this CPU-only dev machine (~16 min/epoch, 8–13+ hours for 30–50 epochs) — needs Kaggle/Colab. A reduced-scale local run (96px, 3 epochs) verified the pipeline works end to end; see report notes.
+- [x] **Run the baseline on a T4 for 30–50 epochs. Log it, evaluate on test once, upload best checkpoint to Drive.** Ran 40 epochs on a Kaggle T4: best val accuracy 38.3% (epoch 39), test accuracy 40.2%, macro F1 38.8%. Checkpoint: https://drive.google.com/drive/folders/1zJYYXlhsT4l6GQdlGnRlr-F0Bm7oV5Wq?usp=sharing
 - [x] Report notes: architecture table/diagram, settings, curves, results, and why accuracy is modest (6k images, 200 fine-grained classes, no pretraining).
-- [x] Update the progress tracker and hand off to Mohamed (include the checkpoint link and run link in the PR). — tracker updated; checkpoint/run links still to come once the real baseline is run.
+- [x] Update the progress tracker and hand off to Mohamed (include the checkpoint link and run link in the PR).
 
 ### Files
 `src/models/encoders.py`, `src/models/classifier.py`, `src/training/trainer.py`, `src/evaluation/metrics.py`, `src/visualization/curves.py`, `configs/cls_scratch.yaml`
@@ -269,7 +269,7 @@ update README with final commands
 ### Nouran → Mohamed
 - Date: Wed 28 Oct 2026
 - Notes:
-  - **Code is done and merged-ready; the real 30–50 epoch baseline still needs to run on Kaggle/Colab T4** before this step is truly finished — this CPU dev machine measured ~16 min/epoch at 224px, so the full run isn't practical here. Don't start Step 4 training off an unrun baseline; ping me once it's run or run it yourself off `configs/cls_scratch.yaml` (same command below) if you need to start sooner.
+  - **The full baseline is done:** 40 epochs on a Kaggle T4, best val accuracy 38.3%, test accuracy 40.2%, macro F1 38.8%. Checkpoint: https://drive.google.com/drive/folders/1zJYYXlhsT4l6GQdlGnRlr-F0Bm7oV5Wq?usp=sharing. Use these numbers in your scratch vs transfer table.
   - `python -m src.cli train --task classification --config configs/cls_scratch.yaml` trains, early-stops on val accuracy, saves the best checkpoint to `outputs/checkpoints/<run_name>_best.pt`, plots curves to `outputs/figures/curves/<run_name>.png`, evaluates once on test, and logs everything to MLflow (`mlflow ui --backend-store-uri sqlite:///mlflow.db`).
   - Encoders: `build_model(cfg)` in `src/models/classifier.py` calls `build_encoder(cfg["model"]["encoder"])` in `src/models/encoders.py`. Add your pretrained backbones as new classes there with the same `forward_features()` / `forward()` / `out_dim` / `get_gradcam_layer()`, and add their names to `build_encoder()`. `train_model()`, `evaluate()` and the CLI don't change.
   - `train_model(model, train_loader, val_loader, cfg, run_name)` (`src/training/trainer.py`) reads everything from `cfg["train"]`: `epochs`, `lr`, `weight_decay`, `early_stopping_patience`, `amp`, `checkpoint_dir`. It returns `(history, checkpoint_path)`. For frozen-backbone training, set the backbone's params to `requires_grad_(False)` before calling it.
