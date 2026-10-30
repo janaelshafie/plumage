@@ -1,0 +1,17 @@
+# Baseline: our CNN trained from scratch.
+base: base.yaml
+
+data:
+  normalization: cub   # not pretrained, so we use the CUB mean/std
+
+model:
+  encoder: scratch_cnn
+  dropout: 0.3
+
+train:
+  epochs: 40
+  lr: 0.0003
+  weight_decay: 0.0001
+  early_stopping_patience: 10   # stop if val accuracy doesn't improve for 10 epochs
+  amp: true                     # mixed precision, only used on a GPU
+  checkpoint_dir: outputs/checkpoints

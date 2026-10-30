@@ -1,44 +1,49 @@
-# Shared defaults. Task configs inherit with `base: base.yaml` and override what they need.
+# Settings shared by every run. Other configs start with `base: base.yaml`
+# and only list what they change.
 
 seed: 42
-device: null            # null = auto (cuda > mps > cpu)
+output_dir: outputs
 
 data:
   train_dataset: Multimodal-Fatima/CUB_train
   test_dataset: Multimodal-Fatima/CUB_test
-  cache_dir: data/hf_cache   # HF download cache (gitignored)
+  cache_dir: data/hf_cache       # where Hugging Face saves the download (not committed)
   num_classes: 200
-  val_fraction: 0.1          # held out per class from the train split
-  split_seed: 42             # fixed: changing it invalidates val_indices.json
+
+  # Validation = 10% of each class of the train set. The chosen images are saved in
+  # val_indices.json and committed, so everyone uses the same ones. Don't change the seed.
+  val_fraction: 0.1
+  split_seed: 42
   val_indices_path: configs/splits/val_indices.json
-  # Duplicates found by `eda` (pHash + dHash). Dropped from the training portion only;
-  # val and test are untouched, so val_indices.json stays valid.
+
+  # Duplicate images found by the EDA. They are removed from training only.
   exclude_train_files:
     - Bronzed_Cowbird_0074_24045.jpg        # same photo as test Bronzed_Cowbird_0025_796213.jpg
     - Prothonotary_Warbler_0020_174122.jpg  # same photo as test Prothonotary_Warbler_0105_174097.jpg
-    - Pigeon_Guillemot_0081_40339.jpg       # duplicate of train Pigeon_Guillemot_0018_40195.jpg
-    - Swainson_Warbler_0049_794880.jpg      # duplicate of train Swainson_Warbler_0022_794868.jpg
-    - Laysan_Albatross_0096_673.jpg         # duplicate of train Laysan_Albatross_0065_809.jpg
+    - Pigeon_Guillemot_0081_40339.jpg       # same photo as train Pigeon_Guillemot_0018_40195.jpg
+    - Swainson_Warbler_0049_794880.jpg      # same photo as train Swainson_Warbler_0022_794868.jpg
+    - Laysan_Albatross_0096_673.jpg         # same photo as train Laysan_Albatross_0065_809.jpg
+
   image_size: 224
   batch_size: 32
   num_workers: 2
-  # Normalization. `normalization` picks the pair the transforms use:
-  #   imagenet -> pretrained backbones (their weights expect ImageNet stats)
-  #   cub      -> from-scratch models (stats of the train split, val excluded; from `eda`)
+
+  # Which mean/std to normalize with:
+  #   imagenet -> pretrained models (they were trained with these values)
+  #   cub      -> models trained from scratch (values measured on our train set by the EDA)
   normalization: imagenet
   imagenet_mean: [0.485, 0.456, 0.406]
   imagenet_std: [0.229, 0.224, 0.225]
   cub_mean: [0.4858, 0.5007, 0.4334]
   cub_std: [0.2317, 0.2275, 0.2667]
+
+  # Data augmentation (training images only)
   augment:
-    crop_scale: [0.5, 1.0]   # RandomResizedCrop area range; birds often fill <50% of the frame
+    crop_scale: [0.5, 1.0]   # random crop keeps 50-100% of the image
     hflip_p: 0.5
     rotation_deg: 10
     color_jitter: {brightness: 0.2, contrast: 0.2, saturation: 0.2, hue: 0.02}
-    eval_resize: 256
+    eval_resize: 256         # val/test: resize to 256 then center crop 224
 
 tracking:
-  backend: mlflow            # mlflow (local mlflow.db) | none
   experiment: plumage-milestone1
-
-output_dir: outputs

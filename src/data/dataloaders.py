@@ -1,66 +1,37 @@
-"""Train / val / test DataLoaders over CUB."""
+"""Builds the train, val and test DataLoaders."""
 
-from __future__ import annotations
-
-from typing import Callable
-
-import torch
 from torch.utils.data import DataLoader
 
-from src.data.cub_dataset import CUBDataset, load_hf_split
+from src.data.cub_dataset import CUBDataset, load_cub
 from src.data.splits import get_train_val_indices
 from src.data.transforms import get_eval_transforms, get_train_transforms
-from src.utils.config import seed_worker
 
 
-def build_datasets(
-    cfg: dict,
-    train_tf: Callable | None = None,
-    eval_tf: Callable | None = None,
-) -> tuple[CUBDataset, CUBDataset, CUBDataset]:
-    """Transforms default to ``get_train_transforms`` / ``get_eval_transforms`` from the config."""
-    data_cfg = cfg["data"]
-    train_tf = train_tf or get_train_transforms(cfg)
-    eval_tf = eval_tf or get_eval_transforms(cfg)
+def build_dataloaders(cfg):
+    """Return (train_loader, val_loader, test_loader).
 
-    hf_train = load_hf_split("train", data_cfg["train_dataset"], data_cfg.get("cache_dir"))
-    hf_test = load_hf_split("test", data_cfg["test_dataset"], data_cfg.get("cache_dir"))
-
-    train_idx, val_idx = get_train_val_indices(cfg, hf_train["label"])
-    exclude = set(data_cfg.get("exclude_train_files") or [])
-    if exclude:
-        file_names = hf_train["file_name"]
-        train_idx = [i for i in train_idx if file_names[i] not in exclude]
-    train_ds = CUBDataset("train", train_tf, indices=train_idx, hf_dataset=hf_train)
-    val_ds = CUBDataset("train", eval_tf, indices=val_idx, hf_dataset=hf_train)
-    test_ds = CUBDataset("test", eval_tf, hf_dataset=hf_test)
-    return train_ds, val_ds, test_ds
-
-
-def build_dataloaders(
-    cfg: dict,
-    train_tf: Callable | None = None,
-    eval_tf: Callable | None = None,
-) -> tuple[DataLoader, DataLoader, DataLoader]:
-    """Return ``(train_loader, val_loader, test_loader)``.
-
-    Validation comes from the committed stratified split of the train set and
-    uses ``eval_tf`` (no augmentation). Only train is shuffled.
+    train: the HF train split, minus the val images and the duplicates found in the EDA
+    val:   10% of each class of the HF train split (fixed, see splits.py)
+    test:  the whole HF test split, used only once for the final evaluation
     """
     data_cfg = cfg["data"]
-    train_ds, val_ds, test_ds = build_datasets(cfg, train_tf, eval_tf)
+    hf_train = load_cub("train", cfg)
+    hf_test = load_cub("test", cfg)
 
-    num_workers = data_cfg.get("num_workers", 0)
-    common = dict(
-        batch_size=data_cfg["batch_size"],
-        num_workers=num_workers,
-        pin_memory=torch.cuda.is_available(),
-        persistent_workers=num_workers > 0,
-        worker_init_fn=seed_worker,
-    )
-    generator = torch.Generator().manual_seed(cfg.get("seed", 0))
+    train_indices, val_indices = get_train_val_indices(cfg, list(hf_train["label"]))
 
-    train_loader = DataLoader(train_ds, shuffle=True, drop_last=True, generator=generator, **common)
-    val_loader = DataLoader(val_ds, shuffle=False, **common)
-    test_loader = DataLoader(test_ds, shuffle=False, **common)
+    # Remove the duplicate images from training (val and test are not changed).
+    file_names = hf_train["file_name"]
+    duplicates = set(data_cfg["exclude_train_files"])
+    train_indices = [i for i in train_indices if file_names[i] not in duplicates]
+
+    train_set = CUBDataset(hf_train, train_indices, get_train_transforms(cfg))
+    val_set = CUBDataset(hf_train, val_indices, get_eval_transforms(cfg))
+    test_set = CUBDataset(hf_test, list(range(len(hf_test))), get_eval_transforms(cfg))
+
+    batch_size = data_cfg["batch_size"]
+    workers = data_cfg["num_workers"]
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=workers)
+    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=workers)
+    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=workers)
     return train_loader, val_loader, test_loader
