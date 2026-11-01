@@ -10,6 +10,7 @@ from src.data.transforms import get_eval_transforms, get_train_transforms
 from src.evaluation.metrics import evaluate
 from src.models.classifier import build_model
 from src.utils.config import load_config
+from src.visualization.gradcam import GradCAM
 
 
 def test_config_inherits_from_base():
@@ -56,6 +57,19 @@ def test_freeze_backbone_trains_only_last_layer():
     assert all(not p.requires_grad for p in model.encoder.parameters())
     assert all(p.requires_grad for p in model.fc.parameters())
     assert not model.encoder.training  # BatchNorm stays frozen too
+
+
+def test_gradcam_heatmap_shape_and_range():
+    cfg = load_config("configs/cls_scratch.yaml")
+    # Also with a frozen encoder, where no gradient would reach the layer without requires_grad on the input.
+    for freeze in [False, True]:
+        cfg["model"]["freeze_backbone"] = freeze
+        gradcam = GradCAM(build_model(cfg))
+        cam, pred, probs = gradcam(torch.randn(3, 64, 64))
+        gradcam.remove()
+        assert cam.shape == (64, 64)               # same size as the image
+        assert cam.min() >= 0 and cam.max() <= 1
+        assert 0 <= pred < 200 and probs.shape == (200,)
 
 
 def test_evaluate_on_perfect_model():
