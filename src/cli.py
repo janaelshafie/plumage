@@ -2,13 +2,14 @@
 
     python -m src.cli eda     --config configs/base.yaml
     python -m src.cli train   --task classification --config configs/cls_scratch.yaml
-    python -m src.cli tune    --task classification --method grid --config configs/tune_resnet50.yaml
+    python -m src.cli tune    --task classification --method grid --config configs/cls_resnet50_finetune.yaml
     python -m src.cli predict --task classification --image bird.jpg --checkpoint best.pt --gradcam
 
-`tune` (Step 4) and `predict` (Step 5) are not written yet.
+`predict` (Step 5) is not written yet.
 """
 
 import argparse
+import json
 import os
 
 import matplotlib
@@ -21,6 +22,7 @@ from src.data.dataloaders import build_dataloaders
 from src.evaluation.metrics import evaluate
 from src.models.classifier import build_model
 from src.training.trainer import train_model
+from src.training.tuning import grid_search, random_search
 from src.utils.config import get_device, load_config, set_seed
 from src.utils.tracking import log_file, log_folder, log_metrics, start_run
 from src.visualization.curves import plot_training_curves
@@ -50,7 +52,9 @@ def train_command(args, cfg):
 
     train_loader, val_loader, test_loader = build_dataloaders(cfg)
     model = build_model(cfg)
-    run_name = cfg["model"]["encoder"] + "-baseline"
+    # Name the run after the config file (e.g. "cls_resnet50_frozen"), so two configs
+    # with the same encoder don't overwrite each other's checkpoint and curves.
+    run_name = os.path.splitext(os.path.basename(args.config))[0]
 
     with start_run(cfg, run_name):
         history, checkpoint_path = train_model(model, train_loader, val_loader, cfg, run_name)
@@ -77,7 +81,28 @@ def train_command(args, cfg):
 
 
 def tune_command(args, cfg):
-    print("`tune` is not implemented yet (Step 4).")
+    if args.task != "classification":
+        print("Tuning is only required for classification (Milestone 1).")
+        return
+
+    search = grid_search if args.method == "grid" else random_search
+    trials = search(cfg)
+
+    best = max(trials, key=lambda t: t["best_val_acc"])
+    total_time = sum(t["time_sec"] for t in trials)
+    print(f"\n{args.method} search results:")
+    for t in trials:
+        print(f"  lr {t['lr']:.2e}  weight decay {t['weight_decay']:.2e}  "
+              f"val acc {t['best_val_acc']:.3f}  ({t['time_sec'] / 60:.1f} min)")
+    print(f"Best: lr {best['lr']:.2e}, weight decay {best['weight_decay']:.2e}, val acc {best['best_val_acc']:.3f}")
+    print(f"{len(trials)} trials in {total_time / 60:.1f} min")
+
+    # Saved so the grid vs random table can be made from it.
+    path = os.path.join(cfg["output_dir"], "tuning", args.method + ".json")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"method": args.method, "trials": trials, "best": best, "total_time_sec": total_time}, f, indent=1)
+    print(f"Saved to {path}")
 
 
 def predict_command(args, cfg):
