@@ -10,6 +10,7 @@ For one image and one class:
 Works with any model that has get_gradcam_layer() (see encoders.py).
 """
 
+import math
 import os
 
 import matplotlib.pyplot as plt
@@ -97,6 +98,26 @@ def save_gradcam_figure(image, cam, title, path):
     for ax in (image_ax, cam_ax):
         ax.axis("off")
     fig.suptitle(title)
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+
+
+def save_image_grid(panels, path, columns=3):
+    """Save several images in a grid, filled row by row.
+
+    panels: list of (image, title), each image an [H, W, 3] numpy array
+            (e.g. from overlay(), or an input image with .permute(1, 2, 0).numpy())
+    """
+    rows = math.ceil(len(panels) / columns)
+    fig, axes = plt.subplots(rows, columns, figsize=(3.3 * columns, 3.6 * rows), squeeze=False)
+    for ax in axes.flat:
+        ax.axis("off")  # also hides empty cells when panels don't fill the last row
+    for ax, (image, title) in zip(axes.flat, panels):
+        ax.imshow(image)
+        ax.set_title(title, fontsize=8)
 
     os.makedirs(os.path.dirname(path), exist_ok=True)
     fig.tight_layout()
