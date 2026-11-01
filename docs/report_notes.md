@@ -92,3 +92,51 @@ All numbers come from `python -m src.cli eda --config configs/base.yaml`. It sav
 
 **Problems**
 - The first `train` run crashed when starting MLflow. On Windows, MLflow's default database path breaks when the user folder name has a space (`C:/Users/Nouran Mokhtar/...`). We fixed it by setting the path ourselves with `mlflow.set_tracking_uri("sqlite:///mlflow.db")` in `start_run()`.
+
+## Step 4 — Transfer learning and hyperparameter tuning (Mohamed)
+
+**What I did**
+- `ResNet50Encoder` in `src/models/encoders.py`: ResNet-50 with ImageNet weights (`IMAGENET1K_V2`). I kept every layer up to `layer4` and removed its average pooling and 1000-class layer. It has the same methods as `ScratchCNN`, so the trainer, metrics and CLI didn't change. It gives a 2048×7×7 feature map and a 2048 vector.
+- `model.freeze_backbone` in the config. When it is `true`, the encoder weights are locked and only the last layer learns. The encoder is also kept in eval mode, because BatchNorm keeps updating its running mean/std in train mode even when the weights are locked.
+- Two configs: `cls_resnet50_frozen.yaml` (lr 1e-3, 15 epochs) and `cls_resnet50_finetune.yaml` (lr 1e-4, 20 epochs). Both use ImageNet normalization and early stopping after 5 epochs.
+- `grid_search` and `random_search` in `src/training/tuning.py`, and the `tune` CLI command. Each trial is 5 epochs, starts from the same seed and is its own MLflow run. Grid tries lr {1e-4, 3e-4} × weight decay {1e-4, 1e-3}. Random tries 4 log-uniform values between the same limits.
+- Runs are now named after their config file, so two ResNet-50 runs don't overwrite each other's checkpoint.
+- One new test: freezing locks the encoder and keeps the last layer trainable.
+
+**Why**
+- *Pretrained model:* we only have ~27 images per species. ResNet-50 already learned edges, textures and shapes from 1.2M ImageNet images.
+- *Frozen vs fine-tuned:* frozen only trains the last layer (fast, keeps ImageNet features as they are). Fine-tuned lets every layer adapt to birds, with a small lr so the ImageNet knowledge isn't destroyed.
+- *ImageNet normalization:* ResNet-50 was trained with these values.
+- *Random search between the grid values:* if it picked from the same 4 points it would just be the grid in another order.
+
+**Results (Kaggle T4)**
+
+| Model | Trainable params | Epochs | Train acc | Best val acc | Test acc | Macro F1 | Time |
+|---|---|---|---|---|---|---|---|
+| Scratch CNN (Step 3) | 4.82M | 40 | 47.3% | 38.3% | 40.2% | 38.8% | — |
+| ResNet-50 frozen | 0.41M (of 23.9M) | 15 | 81.9% | 61.0% (epoch 11) | 64.3% | 64.0% | 9.6 min |
+| **ResNet-50 fine-tuned** | 23.9M | 20 | 99.1% | **82.0%** (epoch 16) | **82.9%** | **82.9%** | 13.3 min |
+| ResNet-50 tuned (lr 1.35e-4, wd 1.67e-4) | 23.9M | 16 (early stop) | 99.4% | 81.3% (epoch 11) | 81.8% | 81.8% | 10.7 min |
+
+![Frozen ResNet-50](figures/cls_resnet50_frozen.png)
+![Fine-tuned ResNet-50](figures/cls_resnet50_finetune.png)
+
+- Frozen is 24 points above scratch while training only the last layer. Val stopped improving after epoch 11, so one linear layer on fixed features reaches its limit.
+- Fine-tuned is 18.6 points above frozen and more than double the scratch CNN. Train accuracy reaches 99% while val stays around 82%, so it memorizes the training images, but val loss doesn't rise, so val accuracy isn't hurt.
+
+**Hyperparameter tuning: it did not improve the accuracy**
+
+| Search | Best lr | Best weight decay | Best val acc (5 epochs) | Trials | Time |
+|---|---|---|---|---|---|
+| Grid | 3e-4 | 1e-4 | 79.5% | 4 | 12.5 min |
+| Random | 1.35e-4 | 1.67e-4 | 79.7% | 4 | 12.6 min |
+
+We trained the best setting (random search, 79.7%) for the full 20 epochs. It got 81.3% val and 81.8% test, a bit **below** the untuned fine-tuned model (82.0% val, 82.9% test). Why:
+- **The trials were only 5 epochs.** The best setting over 5 epochs isn't always the best over 20, and their scores are lower than a full run (79.5% vs 82.0%) because the model hasn't finished learning.
+- **The differences were noise.** All 6 trials with lr between 1.35e-4 and 3e-4 landed between 78.2% and 79.7%. On 600 val images, 1 point is about 6 images, so the "winner" wasn't really better.
+- **The default was already good.** Every lr in the range gives about 80%, so lr 1e-4 was already a good choice.
+
+**Final model:** we choose by **val**, not test. The untuned fine-tuned ResNet-50 (`configs/cls_resnet50_finetune.yaml`) has the best val accuracy (82.0%), so it is our final model: **82.9% test accuracy, 82.9% macro F1**. Checkpoint: `cls_resnet50_finetune_best.pt` on the team Drive.
+
+**Problems**
+- Both ResNet-50 runs were named `resnet50-baseline`, so the second run would have overwritten the first one's checkpoint and curves. Runs are now named after their config file.

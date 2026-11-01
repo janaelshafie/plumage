@@ -19,11 +19,11 @@ Five people, five steps, run in order. Each person finishes their step, commits 
 | 1 | Jana | Foundation and data pipeline | Mon 26 Oct | ✅ Done | Mon 26 Oct |
 | 2 | Habiba | EDA, cleaning, preprocessing, augmentation | Tue 27 Oct | ✅ Done | Mon 26 Oct |
 | 3 | Nouran | From-scratch CNN, trainer, metrics | Wed 28 Oct | ✅ Done | Fri 30 Oct |
-| 4 | Mohamed | Transfer learning and hyperparameter tuning | Thu 29 – Fri 30 Oct (2 pm) | 🔵 In progress | |
-| 5 | Abdallah | Grad-CAM, inference, benchmarking, submission | Fri 30 – Sat 31 Oct | ⚪ Waiting | |
+| 4 | Mohamed | Transfer learning and hyperparameter tuning | Thu 29 – Fri 30 Oct (2 pm) | ✅ Done | Sun 1 Nov |
+| 5 | Abdallah | Grad-CAM, inference, benchmarking, submission | Fri 30 – Sat 31 Oct | 🔵 In progress | |
 | – | Everyone | Final review and LMS submission | Sun 1 Nov | ⚪ Waiting | |
 
-**Baton is currently with:** Mohamed
+**Baton is currently with:** Abdallah
 
 ---
 
@@ -164,18 +164,18 @@ exp: scratch baseline config
 **Goal:** Add one pretrained model, try it frozen and fine-tuned, tune it with grid and random search, and train the final model.
 
 ### Checklist
-- [ ] Add a `ResNet50Encoder` class in `src/models/encoders.py`: load `torchvision.models.resnet50(weights="IMAGENET1K_V2")`, remove its last layer, and give it the same methods as `ScratchCNN` (`forward_features`, `forward`, `out_dim`, `get_gradcam_layer`). Add `"resnet50"` to `build_encoder()`.
-- [ ] Add `freeze_backbone: true/false` under `model:` in the config. If true, set `requires_grad = False` on the encoder's parameters so only the last layer trains.
-- [ ] Two configs: `configs/cls_resnet50_frozen.yaml` and `configs/cls_resnet50_finetune.yaml` (keep `normalization: imagenet`). Train both with the normal `train` command.
-- [ ] `src/training/tuning.py` with two simple functions:
+- [x] Add a `ResNet50Encoder` class in `src/models/encoders.py`: load `torchvision.models.resnet50(weights="IMAGENET1K_V2")`, remove its last layer, and give it the same methods as `ScratchCNN` (`forward_features`, `forward`, `out_dim`, `get_gradcam_layer`). Add `"resnet50"` to `build_encoder()`.
+- [x] Add `freeze_backbone: true/false` under `model:` in the config. If true, set `requires_grad = False` on the encoder's parameters so only the last layer trains.
+- [x] Two configs: `configs/cls_resnet50_frozen.yaml` and `configs/cls_resnet50_finetune.yaml` (keep `normalization: imagenet`). Train both with the normal `train` command.
+- [x] `src/training/tuning.py` with two simple functions:
   - `grid_search(cfg)`: tries every combination of learning rate `[1e-4, 3e-4]` × weight decay `[1e-4, 1e-3]` = 4 trials
   - `random_search(cfg, n_trials=4)`: picks 4 random combinations from the same ranges
   - Each trial is a short `train_model()` run (~5 epochs) and its own MLflow run. Print the best one at the end.
-- [ ] Add `tune` to the CLI: `python -m src.cli tune --task classification --method grid --config configs/cls_resnet50_finetune.yaml`
-- [ ] Small table: grid vs random (best val accuracy, number of trials, total time).
-- [ ] Train the best setting for the full number of epochs, evaluate on test, and upload the checkpoint to Drive.
-- [ ] Small table: scratch vs frozen vs fine-tuned (test accuracy, macro F1, number of parameters, training time).
-- [ ] Report notes, then update the progress tracker and hand off to Abdallah.
+- [x] Add `tune` to the CLI: `python -m src.cli tune --task classification --method grid --config configs/cls_resnet50_finetune.yaml`
+- [x] Small table: grid vs random (best val accuracy, number of trials, total time).
+- [x] Train the best setting for the full number of epochs, evaluate on test, and upload the checkpoint to Drive.
+- [x] Small table: scratch vs frozen vs fine-tuned (test accuracy, macro F1, number of parameters, training time).
+- [x] Report notes, then update the progress tracker and hand off to Abdallah.
 
 ### Files
 `src/models/encoders.py`, `src/training/tuning.py`, `src/cli.py`, `configs/cls_resnet50_frozen.yaml`, `configs/cls_resnet50_finetune.yaml`
@@ -277,8 +277,14 @@ update README with final commands
   - `data.normalization: cub` is set in `configs/cls_scratch.yaml` for the from-scratch model; keep `imagenet` (the `base.yaml` default) for your pretrained backbones since they expect ImageNet stats.
 
 ### Mohamed → Abdallah
-- Date:
+- Date: Sun 1 Nov 2026
 - Notes:
+  - **Final model: fine-tuned ResNet-50** (`configs/cls_resnet50_finetune.yaml`): 82.0% val, 82.9% test, 82.9% macro F1. Checkpoint `cls_resnet50_finetune_best.pt` on the team Drive: https://drive.google.com/drive/folders/1zJYYXlhsT4l6GQdlGnRlr-F0Bm7oV5Wq. For Grad-CAM on the scratch model, use Nouran's scratch checkpoint.
+  - The checkpoint holds the full config, so `build_model(checkpoint["config"])` rebuilds the model; then `model.load_state_dict(checkpoint["model_state"])`.
+  - Grad-CAM layer: `model.get_gradcam_layer()` returns `layer4` for ResNet-50 (feature map 2048×7×7) and the last conv for the scratch CNN.
+  - Runs and checkpoints are now named after the config file (e.g. `outputs/checkpoints/cls_resnet50_finetune_best.pt`), not the encoder.
+  - Tuning: `python -m src.cli tune --method grid|random --config configs/cls_resnet50_finetune.yaml`. Results go to `outputs/tuning/<method>.json`. Tuning didn't beat the default; see my report notes.
+  - For benchmarking: our ResNet-50 uses 224px input, 20 epochs, only the image (no boxes or parts), and our own train/val split (train 5,389). Published CUB ResNet-50 results usually use 448px and the full 5,994 training images, so expect them to be higher.
 
 ### Abdallah → Team (submission)
 - Date:

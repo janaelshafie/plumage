@@ -1,0 +1,16 @@
+# ResNet-50 pretrained on ImageNet, with the backbone frozen: only the last layer learns.
+# data.normalization stays `imagenet` (from base.yaml), the values ResNet-50 was trained with.
+base: base.yaml
+
+model:
+  encoder: resnet50
+  dropout: 0.3
+  freeze_backbone: true
+
+train:
+  epochs: 15
+  lr: 0.001                     # only one small layer learns, so a bigger lr is fine
+  weight_decay: 0.0001
+  early_stopping_patience: 5
+  amp: true
+  checkpoint_dir: outputs/checkpoints

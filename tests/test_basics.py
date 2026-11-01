@@ -48,6 +48,16 @@ def test_model_output_shape():
     assert outputs.shape == (2, 200)
 
 
+def test_freeze_backbone_trains_only_last_layer():
+    cfg = load_config("configs/cls_scratch.yaml")
+    cfg["model"]["freeze_backbone"] = True
+    model = build_model(cfg)
+    model.train()
+    assert all(not p.requires_grad for p in model.encoder.parameters())
+    assert all(p.requires_grad for p in model.fc.parameters())
+    assert not model.encoder.training  # BatchNorm stays frozen too
+
+
 def test_evaluate_on_perfect_model():
     # A fake "model" that already outputs one-hot scores, so every prediction is right.
     scores = torch.eye(6)
