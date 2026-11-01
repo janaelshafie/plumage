@@ -10,6 +10,9 @@ For one image and one class:
 Works with any model that has get_gradcam_layer() (see encoders.py).
 """
 
+import os
+
+import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 from matplotlib import colormaps
@@ -82,3 +85,20 @@ def overlay(image, cam, alpha=0.5):
     """
     heatmap = colormaps["jet"](cam.numpy())[..., :3]  # red = high, blue = low; drop the alpha channel
     return (1 - alpha) * image.permute(1, 2, 0).numpy() + alpha * heatmap
+
+
+def save_gradcam_figure(image, cam, title, path):
+    """Save the image and its Grad-CAM overlay side by side. image is [3, H, W] in 0..1."""
+    fig, (image_ax, cam_ax) = plt.subplots(1, 2, figsize=(8, 4.3))
+    image_ax.imshow(image.permute(1, 2, 0).numpy())
+    image_ax.set_title("input")
+    cam_ax.imshow(overlay(image, cam))
+    cam_ax.set_title("Grad-CAM")
+    for ax in (image_ax, cam_ax):
+        ax.axis("off")
+    fig.suptitle(title)
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)

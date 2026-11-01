@@ -4,8 +4,6 @@
     python -m src.cli train   --task classification --config configs/cls_scratch.yaml
     python -m src.cli tune    --task classification --method grid --config configs/cls_resnet50_finetune.yaml
     python -m src.cli predict --task classification --image bird.jpg --checkpoint best.pt --gradcam
-
-`predict` (Step 5) is not written yet.
 """
 
 import argparse
@@ -17,16 +15,19 @@ import matplotlib
 matplotlib.use("Agg")  # save figures to files without opening windows
 
 import torch
+from PIL import Image
 
 from src.data.dataloaders import build_dataloaders
+from src.data.transforms import denormalize, get_eval_transforms, get_mean_std
 from src.evaluation.metrics import evaluate
-from src.models.classifier import build_model
+from src.models.classifier import build_model, load_checkpoint
 from src.training.trainer import train_model
 from src.training.tuning import grid_search, random_search
 from src.utils.config import get_device, load_config, set_seed
 from src.utils.tracking import log_file, log_folder, log_metrics, start_run
 from src.visualization.curves import plot_training_curves
 from src.visualization.eda_plots import run_eda
+from src.visualization.gradcam import GradCAM, save_gradcam_figure
 
 
 def eda_command(args, cfg):
@@ -106,7 +107,41 @@ def tune_command(args, cfg):
 
 
 def predict_command(args, cfg):
-    print("`predict` is not implemented yet (Step 5).")
+    if args.task != "classification":
+        print(f"Prediction for '{args.task}' is part of Milestone 2.")
+        return
+
+    device = get_device()
+    # The model and its own config (encoder, normalization) come from the checkpoint.
+    model, model_cfg = load_checkpoint(args.checkpoint, device)
+    with open(cfg["data"]["class_names_path"], encoding="utf-8") as f:
+        class_names = json.load(f)
+
+    # Same preprocessing as val/test: resize 256, center crop 224, normalize.
+    image = get_eval_transforms(model_cfg)(Image.open(args.image).convert("RGB")).to(device)
+
+    if args.gradcam:
+        gradcam = GradCAM(model)
+        cam, _, probs = gradcam(image)  # Grad-CAM also gives the probabilities
+        gradcam.remove()
+    else:
+        with torch.no_grad():
+            probs = model(image.unsqueeze(0)).softmax(dim=1)[0].cpu()
+
+    top_probs, top_classes = probs.topk(5)
+    print(f"Top 5 for {args.image}:")
+    for rank, (p, c) in enumerate(zip(top_probs.tolist(), top_classes.tolist()), start=1):
+        print(f"  {rank}. {class_names[c]:<35} {p:6.1%}")
+
+    if args.gradcam:
+        # Named after the image and the checkpoint, so two models don't overwrite each other.
+        image_name = os.path.splitext(os.path.basename(args.image))[0]
+        model_name = os.path.splitext(os.path.basename(args.checkpoint))[0]
+        path = os.path.join(cfg["output_dir"], "predictions", f"{image_name}_{model_name}.png")
+        shown = denormalize(image.cpu(), *get_mean_std(model_cfg))
+        title = f"{model_name}: {class_names[top_classes[0]]} ({top_probs[0]:.0%})"
+        save_gradcam_figure(shown, cam, title, path)
+        print(f"Saved Grad-CAM to {path}")
 
 
 def main():
