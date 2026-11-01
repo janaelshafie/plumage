@@ -1,0 +1,25 @@
+# ResNet-50 pretrained on ImageNet, fine-tuned: every layer learns.
+# data.normalization stays `imagenet` (from base.yaml), the values ResNet-50 was trained with.
+base: base.yaml
+
+model:
+  encoder: resnet50
+  dropout: 0.3
+  freeze_backbone: false
+
+train:
+  epochs: 20
+  lr: 0.0001                    # small, so we adjust ImageNet knowledge instead of destroying it
+  weight_decay: 0.0001
+  early_stopping_patience: 5
+  amp: true
+  checkpoint_dir: outputs/checkpoints
+
+# Hyperparameter search (python -m src.cli tune --method grid|random)
+#   grid:   tries every combination of the values below (2 x 2 = 4 trials)
+#   random: picks n_trials random values between the smallest and largest value of each list
+tune:
+  epochs: 5                     # each trial is a short run
+  n_trials: 4                   # random search only
+  lr: [0.0001, 0.0003]
+  weight_decay: [0.0001, 0.001]
