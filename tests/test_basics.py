@@ -8,7 +8,7 @@ from src.data.splits import make_val_split
 from src.data.text import clean_caption, clean_captions
 from src.data.transforms import get_eval_transforms, get_train_transforms
 from src.evaluation.metrics import evaluate
-from src.models.classifier import build_model
+from src.models.classifier import build_model, load_checkpoint
 from src.utils.config import load_config
 from src.visualization.gradcam import GradCAM
 
@@ -57,6 +57,18 @@ def test_freeze_backbone_trains_only_last_layer():
     assert all(not p.requires_grad for p in model.encoder.parameters())
     assert all(p.requires_grad for p in model.fc.parameters())
     assert not model.encoder.training  # BatchNorm stays frozen too
+
+
+def test_load_checkpoint_rebuilds_the_same_model(tmp_path):
+    cfg = load_config("configs/cls_scratch.yaml")
+    model = build_model(cfg).eval()
+    path = tmp_path / "model.pt"
+    torch.save({"model_state": model.state_dict(), "config": cfg}, path)  # same format as train_model()
+
+    loaded, loaded_cfg = load_checkpoint(path, torch.device("cpu"))
+    x = torch.randn(1, 3, 64, 64)
+    assert torch.allclose(loaded(x), model(x))     # same weights -> same outputs
+    assert loaded_cfg["data"]["normalization"] == "cub"
 
 
 def test_gradcam_heatmap_shape_and_range():

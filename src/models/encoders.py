@@ -69,11 +69,15 @@ class ResNet50Encoder(nn.Module):
     (the 1000-class ImageNet layer). Our Classifier adds its own 200-species layer.
 
     A 224x224 image gives a 2048 x 7 x 7 feature map, and pooling turns it into 2048 numbers.
+
+    pretrained=False skips the ImageNet download. We use it when loading our own
+    checkpoint, because its weights replace the ImageNet ones anyway.
     """
 
-    def __init__(self):
+    def __init__(self, pretrained=True):
         super().__init__()
-        resnet = models.resnet50(weights="IMAGENET1K_V2")  # downloads ~100 MB the first time
+        # Downloads ~100 MB the first time when pretrained.
+        resnet = models.resnet50(weights="IMAGENET1K_V2" if pretrained else None)
         # children() = conv1, bn1, relu, maxpool, layer1, layer2, layer3, layer4, avgpool, fc
         self.backbone = nn.Sequential(*list(resnet.children())[:-2])
         self.pool = nn.AdaptiveAvgPool2d(1)
@@ -92,10 +96,13 @@ class ResNet50Encoder(nn.Module):
         return self.backbone[-1]
 
 
-def build_encoder(name):
-    """Create an encoder from its name in the config (`model.encoder`)."""
+def build_encoder(name, pretrained=True):
+    """Create an encoder from its name in the config (`model.encoder`).
+
+    pretrained only matters for pretrained encoders (ResNet-50); ScratchCNN always starts random.
+    """
     if name == "scratch_cnn":
         return ScratchCNN()
     if name == "resnet50":
-        return ResNet50Encoder()
+        return ResNet50Encoder(pretrained)
     raise ValueError(f"Unknown encoder: {name}")
