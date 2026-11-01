@@ -20,8 +20,8 @@ Five people, five steps, run in order. Each person finishes their step, commits 
 | 2 | Habiba | EDA, cleaning, preprocessing, augmentation | Tue 27 Oct | ✅ Done | Mon 26 Oct |
 | 3 | Nouran | From-scratch CNN, trainer, metrics | Wed 28 Oct | ✅ Done | Fri 30 Oct |
 | 4 | Mohamed | Transfer learning and hyperparameter tuning | Thu 29 – Fri 30 Oct (2 pm) | ✅ Done | Sun 1 Nov |
-| 5 | Abdallah | Grad-CAM, inference, benchmarking, submission | Fri 30 – Sat 31 Oct | 🔵 In progress | |
-| – | Everyone | Final review and LMS submission | Sun 1 Nov | ⚪ Waiting | |
+| 5 | Abdallah | Grad-CAM, inference, benchmarking, submission | Fri 30 – Sat 31 Oct | ✅ Done | |
+| – | Everyone | Final review and LMS submission | Sun 1 Nov | 🔵 In progress | |
 
 **Baton is currently with:** Abdallah
 
@@ -202,17 +202,17 @@ config for the final tuned model
 **Goal:** Show what the models look at with Grad-CAM, add the `predict` command, compare with published results, and submit.
 
 ### Checklist
-- [ ] `src/visualization/gradcam.py`: our own Grad-CAM.
+- [x] `src/visualization/gradcam.py`: our own Grad-CAM.
   - Use a forward hook and a backward hook on `model.get_gradcam_layer()` to save the feature maps and their gradients.
   - Average the gradients to get one weight per channel, take the weighted sum of the feature maps, apply ReLU, resize to the image size, and draw it over the image.
-- [ ] Grad-CAM figures: a few correct predictions, a few wrong ones (show true vs predicted), and the same images with the scratch model vs the ResNet-50 model.
-- [ ] Error analysis: use the confusion matrix from `evaluate()` to list the 5 most confused species pairs.
-- [ ] Add `predict` to the CLI: `python -m src.cli predict --task classification --image bird.jpg --checkpoint best.pt --gradcam`. It prints the top-5 species and saves the heatmap. The checkpoint already contains the config, so the model can be rebuilt with `build_model(checkpoint["config"])`.
-- [ ] `docs/benchmark.md`: a small table with 2–3 published CUB-200 accuracies for ResNet-50 (with links), next to ours, and a few sentences on why they differ (image size, epochs, tricks).
-- [ ] README: add the final `train`, `tune` and `predict` commands and the Drive link for checkpoints.
-- [ ] Clone the repo on a fresh Colab, install, and run `eda` and a short `train`. Fix anything that breaks.
-- [ ] Put everyone's report notes and MLflow screenshots together into the Milestone 1 write-up.
-- [ ] Update the progress tracker.
+- [x] Grad-CAM figures: a few correct predictions, a few wrong ones (show true vs predicted), and the same images with the scratch model vs the ResNet-50 model.
+- [x] Error analysis: use the confusion matrix from `evaluate()` to list the 5 most confused species pairs.
+- [x] Add `predict` to the CLI: `python -m src.cli predict --task classification --image bird.jpg --checkpoint best.pt --gradcam`. It prints the top-5 species and saves the heatmap. The checkpoint already contains the config, so the model can be rebuilt with `build_model(checkpoint["config"])`.
+- [x] `docs/benchmark.md`: a small table with 2–3 published CUB-200 accuracies for ResNet-50 (with links), next to ours, and a few sentences on why they differ (image size, epochs, tricks).
+- [x] README: add the final `train`, `tune` and `predict` commands and the Drive link for checkpoints.
+- [x] Clone the repo on a fresh Colab, install, and run `eda` and a short `train`. Fix anything that breaks.
+- [x] Put everyone's report notes and MLflow screenshots together into the Milestone 1 write-up.
+- [x] Update the progress tracker.
 
 ### Files
 `src/visualization/gradcam.py`, `src/cli.py`, `docs/benchmark.md`, `README.md`
