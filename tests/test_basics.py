@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from src.data.splits import make_val_split
 from src.data.text import clean_caption, clean_captions
 from src.data.transforms import get_eval_transforms, get_train_transforms
-from src.evaluation.metrics import evaluate
+from src.evaluation.metrics import evaluate, most_confused_pairs
 from src.models.classifier import build_model, load_checkpoint
 from src.utils.config import load_config
 from src.visualization.gradcam import GradCAM
@@ -92,3 +92,12 @@ def test_evaluate_on_perfect_model():
     results = evaluate(torch.nn.Identity(), loader, torch.device("cpu"), num_classes=6)
     assert results["accuracy"] == 1.0
     assert results["macro_f1"] == 1.0
+
+
+def test_most_confused_pairs_counts_both_directions():
+    # rows = true species, columns = predicted species
+    cm = [[5, 3, 0],    # a: 3 times predicted as b
+          [1, 4, 0],    # b: 1 time predicted as a  -> a <-> b = 4 mistakes
+          [0, 2, 6]]    # c: 2 times predicted as b -> b <-> c = 2 mistakes
+    pairs = most_confused_pairs(cm, ["a", "b", "c"], k=5)
+    assert [(p["species_a"], p["species_b"], p["total"]) for p in pairs] == [("a", "b", 4), ("b", "c", 2)]
