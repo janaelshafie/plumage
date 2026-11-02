@@ -7,9 +7,10 @@ from torch.utils.data import DataLoader, TensorDataset
 from src.data.splits import make_val_split
 from src.data.text import clean_caption, clean_captions
 from src.data.transforms import get_eval_transforms, get_train_transforms
-from src.evaluation.metrics import evaluate
-from src.models.classifier import build_model
+from src.evaluation.metrics import evaluate, most_confused_pairs
+from src.models.classifier import build_model, load_checkpoint
 from src.utils.config import load_config
+from src.visualization.gradcam import GradCAM
 
 
 def test_config_inherits_from_base():
@@ -58,6 +59,31 @@ def test_freeze_backbone_trains_only_last_layer():
     assert not model.encoder.training  # BatchNorm stays frozen too
 
 
+def test_load_checkpoint_rebuilds_the_same_model(tmp_path):
+    cfg = load_config("configs/cls_scratch.yaml")
+    model = build_model(cfg).eval()
+    path = tmp_path / "model.pt"
+    torch.save({"model_state": model.state_dict(), "config": cfg}, path)  # same format as train_model()
+
+    loaded, loaded_cfg = load_checkpoint(path, torch.device("cpu"))
+    x = torch.randn(1, 3, 64, 64)
+    assert torch.allclose(loaded(x), model(x))     # same weights -> same outputs
+    assert loaded_cfg["data"]["normalization"] == "cub"
+
+
+def test_gradcam_heatmap_shape_and_range():
+    cfg = load_config("configs/cls_scratch.yaml")
+    # Also with a frozen encoder, where no gradient would reach the layer without requires_grad on the input.
+    for freeze in [False, True]:
+        cfg["model"]["freeze_backbone"] = freeze
+        gradcam = GradCAM(build_model(cfg))
+        cam, pred, probs = gradcam(torch.randn(3, 64, 64))
+        gradcam.remove()
+        assert cam.shape == (64, 64)               # same size as the image
+        assert cam.min() >= 0 and cam.max() <= 1
+        assert 0 <= pred < 200 and probs.shape == (200,)
+
+
 def test_evaluate_on_perfect_model():
     # A fake "model" that already outputs one-hot scores, so every prediction is right.
     scores = torch.eye(6)
@@ -66,3 +92,12 @@ def test_evaluate_on_perfect_model():
     results = evaluate(torch.nn.Identity(), loader, torch.device("cpu"), num_classes=6)
     assert results["accuracy"] == 1.0
     assert results["macro_f1"] == 1.0
+
+
+def test_most_confused_pairs_counts_both_directions():
+    # rows = true species, columns = predicted species
+    cm = [[5, 3, 0],    # a: 3 times predicted as b
+          [1, 4, 0],    # b: 1 time predicted as a  -> a <-> b = 4 mistakes
+          [0, 2, 6]]    # c: 2 times predicted as b -> b <-> c = 2 mistakes
+    pairs = most_confused_pairs(cm, ["a", "b", "c"], k=5)
+    assert [(p["species_a"], p["species_b"], p["total"]) for p in pairs] == [("a", "b", 4), ("b", "c", 2)]
