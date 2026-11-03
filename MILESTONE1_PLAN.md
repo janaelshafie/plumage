@@ -20,10 +20,10 @@ Five people, five steps, run in order. Each person finishes their step, commits 
 | 2 | Habiba | EDA, cleaning, preprocessing, augmentation | Tue 27 Oct | ✅ Done | Mon 26 Oct |
 | 3 | Nouran | From-scratch CNN, trainer, metrics | Wed 28 Oct | ✅ Done | Fri 30 Oct |
 | 4 | Mohamed | Transfer learning and hyperparameter tuning | Thu 29 – Fri 30 Oct (2 pm) | ✅ Done | Sun 1 Nov |
-| 5 | Abdallah | Grad-CAM, inference, benchmarking, submission | Fri 30 – Sat 31 Oct | ✅ Done | |
-| – | Everyone | Final review and LMS submission | Sun 1 Nov | 🔵 In progress | |
+| 5 | Abdallah | Grad-CAM, inference, benchmarking, submission | Fri 30 – Sat 31 Oct | ✅ Done | Sun 1 Nov |
+| – | Everyone | Final review and LMS submission | Sun 1 Nov | ✅ Done | Sun 1 Nov |
 
-**Baton is currently with:** Abdallah
+**Baton is currently with:** — (Milestone 1 submitted)
 
 ---
 
@@ -235,9 +235,9 @@ update README with final commands
 
 ## Sunday 1 November — everyone
 
-- [ ] Each person runs one README command on a fresh Colab clone.
-- [ ] Each person explains another person's step out loud for ~5 minutes (the discussion is individual and covers the whole project).
-- [ ] Abdallah uploads the Milestone 1 submission to the LMS before the deadline.
+- [x] Each person runs one README command on a fresh Colab clone.
+- [x] Each person explains another person's step out loud for ~5 minutes (the discussion is individual and covers the whole project).
+- [x] Abdallah uploads the Milestone 1 submission to the LMS before the deadline.
 
 ---
 
@@ -287,5 +287,10 @@ update README with final commands
   - For benchmarking: our ResNet-50 uses 224px input, 20 epochs, only the image (no boxes or parts), and our own train/val split (train 5,389). Published CUB ResNet-50 results usually use 448px and the full 5,994 training images, so expect them to be higher.
 
 ### Abdallah → Team (submission)
-- Date:
+- Date: Sun 1 Nov 2026
 - Notes:
+  - Milestone 1 is submitted on the LMS. The write-up is `docs/milestone1_report.md`; the published comparison is `docs/benchmark.md` and the citations are in `docs/references.md`.
+  - Grad-CAM is in `src/visualization/gradcam.py` (forward and backward hooks on `model.get_gradcam_layer()`). The figures for correct, wrong and scratch vs ResNet-50 cases are in `docs/figures/gradcam_*.png`.
+  - `predict` prints the top-5 species and, with `--gradcam`, saves a heatmap to `outputs/predictions/`. It only needs a checkpoint and an image. The species names are in `configs/class_names.json`.
+  - `analyze` lists the 5 most confused species pairs and draws Grad-CAM on correct and wrong test predictions. `--compare` adds a second checkpoint. Output goes to `outputs/analysis/`.
+  - On Drive, the scratch checkpoint is named `.zip`. Rename it to `.pt` and don't unzip it (see the README).
