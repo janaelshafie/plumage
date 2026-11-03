@@ -8,6 +8,8 @@ wandb/
 *.pt
 *.pth
 *.ckpt
+/report/milestone1_report.tex
+MILESTONE1_PLAN.md
 
 # Python
 __pycache__/
