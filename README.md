@@ -33,7 +33,7 @@ The dataset (~1.2 GB) downloads automatically into `data/hf_cache/` the first ti
 
 ### Trained models
 
-Checkpoints are on the team Google Drive: https://drive.google.com/drive/folders/1zJYYXlhsT4l6GQdlGnRlr-F0Bm7oV5Wq
+Checkpoints are on the team Google Drive.
 
 Put them in `outputs/checkpoints/`:
 - `cls_resnet50_finetune_best.pt`: the final ResNet-50
