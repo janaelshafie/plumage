@@ -9,6 +9,7 @@ wandb/
 *.pth
 *.ckpt
 /report/milestone1_report.tex
+instructions.txt
 MILESTONE1_PLAN.md
 
 # Python
