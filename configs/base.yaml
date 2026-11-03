@@ -9,6 +9,9 @@ data:
   test_dataset: Multimodal-Fatima/CUB_test
   cache_dir: data/hf_cache       # where Hugging Face saves the download (not committed)
   num_classes: 200
+  # The 200 species names in label order (label 0 = first name), saved from the dataset's
+  # metadata so `predict` can name species without downloading the dataset.
+  class_names_path: configs/class_names.json
 
   # Validation = 10% of each class of the train set. The chosen images are saved in
   # val_indices.json and committed, so everyone uses the same ones. Don't change the seed.

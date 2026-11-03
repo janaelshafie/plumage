@@ -1,0 +1,8 @@
+# Final model: fine-tuned ResNet-50 with the best setting from tuning.
+# Random search trial random-2 had the highest val accuracy (79.7% after 5 epochs).
+# Everything else is the same as cls_resnet50_finetune.yaml.
+base: cls_resnet50_finetune.yaml
+
+train:
+  lr: 0.000135
+  weight_decay: 0.000167

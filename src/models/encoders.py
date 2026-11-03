@@ -13,6 +13,7 @@ ScratchCNN and add its name to build_encoder() at the bottom.
 """
 
 import torch.nn as nn
+from torchvision import models
 
 
 def conv_block(in_channels, out_channels):
@@ -61,8 +62,47 @@ class ScratchCNN(nn.Module):
         return self.blocks[-1][3]
 
 
-def build_encoder(name):
-    """Create an encoder from its name in the config (`model.encoder`)."""
+class ResNet50Encoder(nn.Module):
+    """ResNet-50 pretrained on ImageNet (1.2M photos, 1000 classes).
+
+    We keep every layer up to layer4 and drop the last two: avgpool and fc
+    (the 1000-class ImageNet layer). Our Classifier adds its own 200-species layer.
+
+    A 224x224 image gives a 2048 x 7 x 7 feature map, and pooling turns it into 2048 numbers.
+
+    pretrained=False skips the ImageNet download. We use it when loading our own
+    checkpoint, because its weights replace the ImageNet ones anyway.
+    """
+
+    def __init__(self, pretrained=True):
+        super().__init__()
+        # Downloads ~100 MB the first time when pretrained.
+        resnet = models.resnet50(weights="IMAGENET1K_V2" if pretrained else None)
+        # children() = conv1, bn1, relu, maxpool, layer1, layer2, layer3, layer4, avgpool, fc
+        self.backbone = nn.Sequential(*list(resnet.children())[:-2])
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.out_dim = 2048
+
+    def forward_features(self, x):
+        return self.backbone(x)
+
+    def forward(self, x):
+        x = self.forward_features(x)
+        x = self.pool(x)
+        return x.flatten(1)  # [B, 2048, 1, 1] -> [B, 2048]
+
+    def get_gradcam_layer(self):
+        # layer4, the last block of ResNet-50.
+        return self.backbone[-1]
+
+
+def build_encoder(name, pretrained=True):
+    """Create an encoder from its name in the config (`model.encoder`).
+
+    pretrained only matters for pretrained encoders (ResNet-50); ScratchCNN always starts random.
+    """
     if name == "scratch_cnn":
         return ScratchCNN()
+    if name == "resnet50":
+        return ResNet50Encoder(pretrained)
     raise ValueError(f"Unknown encoder: {name}")
