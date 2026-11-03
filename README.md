@@ -37,7 +37,7 @@ Checkpoints are on the team Google Drive: https://drive.google.com/drive/folders
 
 Put them in `outputs/checkpoints/`:
 - `cls_resnet50_finetune_best.pt`: the final ResNet-50
-- `scratch_cnn-baseline_best.pt`: the CNN from scratch. On Drive it is named `.zip`. **Rename it to `.pt` and don't unzip it**, because a PyTorch checkpoint is already a zip file.
+- `scratch_cnn-baseline_best.pt`: the CNN from scratch
 
 ## How to run
 
@@ -47,7 +47,6 @@ python -m src.cli eda --config configs/base.yaml
 
 # Train: checkpoint goes to outputs/checkpoints/<config name>_best.pt, curves to outputs/figures/curves/
 python -m src.cli train --task classification --config configs/cls_scratch.yaml
-python -m src.cli train --task classification --config configs/cls_resnet50_frozen.yaml
 python -m src.cli train --task classification --config configs/cls_resnet50_finetune.yaml
 
 # Hyperparameter search (4 short trials each): results go to outputs/tuning/<method>.json
